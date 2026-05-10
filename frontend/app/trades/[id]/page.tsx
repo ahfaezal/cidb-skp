@@ -1408,6 +1408,33 @@ export default function TradeDetailPage() {
           </div>
         </section>
 
+        {mappings.length === 0 && (
+          <section className="rounded-2xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm font-bold uppercase text-blue-600">
+                  Langkah Seterusnya
+                </p>
+                <h2 className="mt-2 text-lg font-bold text-slate-900">
+                  Mula mapping CMCS untuk {trade.code}
+                </h2>
+                <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                  Pilih CMCS rujukan, isi tafsiran khusus tred, kemudian simpan
+                  mapping secara manual tanpa AI.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveWorkflow("mapping")}
+                className="w-fit rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Mula Mapping CMCS
+              </button>
+            </div>
+          </section>
+        )}
+
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900">
             Development Pipeline
