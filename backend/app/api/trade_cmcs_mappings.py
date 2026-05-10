@@ -65,6 +65,45 @@ def extract_response_text(data: dict):
     return "\n".join(chunks)
 
 
+def normalize_ai_draft(draft: dict):
+    required_fields = {
+        "trade_specific_content": "",
+        "draft_module_title": "",
+        "draft_objective": "",
+        "draft_content_outline": "",
+        "suggested_learning_packages": "",
+        "suggested_assessment_areas": "",
+        "mapping_notes": "",
+    }
+
+    for key, fallback in required_fields.items():
+        if draft.get(key) is None:
+            draft[key] = fallback
+
+    blocks = draft.get("blocks") or []
+    normalized_blocks = []
+
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+
+        items = block.get("items") or []
+        if isinstance(items, str):
+            items = [items]
+
+        normalized_blocks.append(
+            {
+                "title": str(block.get("title") or "Tajuk kandungan"),
+                "subtitle": str(block.get("subtitle") or ""),
+                "items": [str(item) for item in items if str(item).strip()],
+            }
+        )
+
+    draft["blocks"] = normalized_blocks
+
+    return draft
+
+
 def get_required_item(model, item_id: int, label: str, db: Session):
     item = db.query(model).filter(model.id == item_id).first()
 
@@ -100,7 +139,14 @@ async def generate_ai_mapping_draft(
         )
 
     trade = get_required_item(Trade, data.trade_id, "Trade", db)
-    cmcs = get_required_item(CMCS, data.cmcs_id, "CMCS", db)
+    cmcs = None
+
+    if data.cmcs_id:
+        cmcs = get_required_item(CMCS, data.cmcs_id, "CMCS", db)
+
+    if not cmcs and not data.is_additional:
+        raise HTTPException(status_code=422, detail="cmcs_id is required")
+
     unit = None
 
     if data.competency_unit_id:
@@ -110,6 +156,26 @@ async def generate_ai_mapping_draft(
             "Competency unit",
             db,
         )
+
+    cmcs_code = cmcs.code if cmcs and cmcs.code else f"CMCS-{cmcs.id}" if cmcs else "Additional"
+    cmcs_title = cmcs.title if cmcs else "Additional Related Knowledge"
+    cmcs_description = (
+        cmcs.description
+        if cmcs
+        else "Generate supplementary SKP content beyond official C01-C06 competencies."
+    )
+    c01_instruction = (
+        '- Because this is C01, blocks[0] must have title exactly "Pengenalan". '
+        "It must introduce the selected trade topic before other blocks.\n"
+        if cmcs_code == "C01"
+        else ""
+    )
+    additional_instruction = (
+        "- This is supplementary content beyond C01-C06. Focus on current industry practice, "
+        "technology, authority requirements, risk, sustainability, digital tools, and best practices.\n"
+        if data.is_additional
+        else ""
+    )
 
     prompt = f"""
 Generate a concise, practical SKP-CIDB CMCS-to-trade mapping draft in Malay.
@@ -122,9 +188,9 @@ Trade:
 - Scope: {trade.description or "-"}
 
 CMCS:
-- Code: {cmcs.code or f"CMCS-{cmcs.id}"}
-- Title: {cmcs.title}
-- Description: {cmcs.description or "-"}
+- Code: {cmcs_code}
+- Title: {cmcs_title}
+- Description: {cmcs_description or "-"}
 
 Competency Unit:
 - {unit.code if unit else "All"} {unit.title if unit else "Semua Competency Unit"}
@@ -143,6 +209,7 @@ Guidelines:
   - subtitle: narrower scope or teaching focus, maximum 16 words.
   - items: 3 to 6 bullet points as plain strings.
 - blocks is the primary output used by the UI. Do not put the whole paragraph into title.
+{c01_instruction}{additional_instruction}
 - draft_content_outline must be structured as 5 to 8 numbered content blocks.
 - Each numbered block must start with a short title only.
 - After each numbered title, include one line beginning exactly with "Sub Tajuk:".
@@ -195,7 +262,7 @@ Guidelines:
             detail="AI response was not valid JSON.",
         ) from exc
 
-    return TradeCMCSMappingAIDraftResponse(**draft)
+    return TradeCMCSMappingAIDraftResponse(**normalize_ai_draft(draft))
 
 
 @router.post("/", response_model=TradeCMCSMappingResponse)

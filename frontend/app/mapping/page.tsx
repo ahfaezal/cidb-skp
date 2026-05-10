@@ -514,6 +514,7 @@ export default function MappingPage() {
   const [cmcsItems, setCmcsItems] = useState<CMCSItem[]>([]);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [selectedCmcsId, setSelectedCmcsId] = useState<number | null>(null);
+  const [isAdditionalMode, setIsAdditionalMode] = useState(false);
   const [mappings, setMappings] = useState<Mapping[]>([]);
   const [modules, setModules] = useState<SKPModule[]>([]);
   const [packages, setPackages] = useState<LearningPackage[]>([]);
@@ -536,7 +537,7 @@ export default function MappingPage() {
     const groups = new Map<string, GeneratedBlock[]>();
 
     generatedBlocks.forEach((block, index) => {
-      const key = blockGroups[block.id] || `group-${index + 1}`;
+      const key = blockGroups[block.id] || block.groupId || `group-${index + 1}`;
       groups.set(key, [...(groups.get(key) || []), block]);
     });
 
@@ -757,18 +758,14 @@ export default function MappingPage() {
   }
 
   function groupBlock(blockId: string, targetGroupId?: string) {
-    setBlockGroups((current) => {
-      const fallbackGroup = `group-${Object.keys(current).length + 1}`;
-
-      return {
-        ...current,
-        [blockId]: targetGroupId || current[blockId] || fallbackGroup,
-      };
-    });
+    setBlockGroups((current) => ({
+      ...current,
+      [blockId]: targetGroupId || current[blockId] || "group-1",
+    }));
   }
 
   async function generateMappingAI() {
-    if (!selectedTradeId || !selectedCmcsId) {
+    if (!selectedTradeId || (!selectedCmcsId && !isAdditionalMode)) {
       setWorkspaceMessage("Pilih tred dan CMCS reference dahulu.");
       return;
     }
@@ -781,8 +778,9 @@ export default function MappingPage() {
         `${API_BASE_URL}/trade-cmcs-mappings/ai-draft`,
         {
           trade_id: selectedTradeId,
-          cmcs_id: selectedCmcsId,
+          cmcs_id: isAdditionalMode ? null : selectedCmcsId,
           competency_unit_id: null,
+          is_additional: isAdditionalMode,
         },
       );
       const blocks = splitAIDraftIntoBlocks(response.data);
@@ -790,10 +788,17 @@ export default function MappingPage() {
       setAiDraft(response.data);
       setGeneratedBlocks(blocks);
       setBlockGroups(
-        Object.fromEntries(blocks.map((block) => [block.id, block.groupId || block.id])),
+        Object.fromEntries(blocks.map((block) => [block.id, block.groupId || "group-1"])),
       );
     } catch (err) {
-      setWorkspaceMessage("Jana AI gagal. Semak backend atau API key.");
+      const message =
+        axios.isAxiosError(err) && err.response?.data?.detail
+          ? typeof err.response.data.detail === "string"
+            ? err.response.data.detail
+            : JSON.stringify(err.response.data.detail)
+          : "Jana AI gagal. Semak backend atau API key.";
+
+      setWorkspaceMessage(message);
       console.error(err);
     } finally {
       setGeneratingAI(false);
@@ -801,8 +806,15 @@ export default function MappingPage() {
   }
 
   async function saveMappingWorkspace() {
-    if (!selectedTradeId || !selectedCmcsId || !aiDraft) {
+    if (!selectedTradeId || !aiDraft) {
       setWorkspaceMessage("Jana AI dahulu sebelum save.");
+      return;
+    }
+
+    const saveCmcsId = selectedCmcsId || cmcsItems[cmcsItems.length - 1]?.id;
+
+    if (!saveCmcsId) {
+      setWorkspaceMessage("Tiada CMCS untuk menyimpan mapping.");
       return;
     }
 
@@ -821,10 +833,10 @@ export default function MappingPage() {
     try {
       await axios.post(`${API_BASE_URL}/trade-cmcs-mappings/`, {
         trade_id: selectedTradeId,
-        cmcs_id: selectedCmcsId,
+        cmcs_id: saveCmcsId,
         competency_unit_id: null,
         relevance_level: "High",
-        mapping_notes: `${aiDraft.mapping_notes}\n\nGrouping:\n${groupedSummary}`,
+        mapping_notes: `${isAdditionalMode ? "[AI Tambahan]\n" : ""}${aiDraft.mapping_notes}\n\nGrouping:\n${groupedSummary}`,
         trade_specific_content: aiDraft.trade_specific_content,
         draft_module_title: aiDraft.draft_module_title,
         draft_objective: aiDraft.draft_objective,
@@ -1089,6 +1101,7 @@ export default function MappingPage() {
                     type="button"
                     onClick={() => {
                       setSelectedCmcsId(item.id);
+                      setIsAdditionalMode(false);
                       setAiDraft(null);
                       setGeneratedBlocks([]);
                       setBlockGroups({});
@@ -1111,6 +1124,33 @@ export default function MappingPage() {
                   </button>
                 );
               })}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAdditionalMode(true);
+                  setSelectedCmcsId(null);
+                  setAiDraft(null);
+                  setGeneratedBlocks([]);
+                  setBlockGroups({});
+                  setWorkspaceMessage("");
+                }}
+                className={[
+                  "w-full px-5 py-4 text-left transition",
+                  isAdditionalMode ? "bg-amber-50" : "hover:bg-slate-50",
+                ].join(" ")}
+              >
+                <p className="text-xs font-bold uppercase text-amber-600">
+                  Tambahan
+                </p>
+                <p className="mt-1 text-sm font-bold text-slate-900">
+                  Jana AI Tambahan
+                </p>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Jana kandungan tambahan di luar C01-C06 seperti teknologi,
+                  risiko, pihak berkuasa, sustainability dan amalan terbaik.
+                </p>
+              </button>
             </div>
           </div>
 
@@ -1129,23 +1169,31 @@ export default function MappingPage() {
               <button
                 type="button"
                 onClick={generateMappingAI}
-                disabled={!selectedTradeId || !selectedCmcsId || generatingAI}
+                disabled={
+                  !selectedTradeId ||
+                  (!selectedCmcsId && !isAdditionalMode) ||
+                  generatingAI
+                }
                 className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50"
               >
                 {generatingAI ? "Menjana..." : "Jana AI"}
               </button>
             </div>
 
-            {selectedCmcs ? (
+            {selectedCmcs || isAdditionalMode ? (
               <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-xs font-bold uppercase text-slate-500">
                   Selected Reference
                 </p>
                 <p className="mt-2 text-sm font-bold text-slate-900">
-                  {getCmcsLabel(selectedCmcs)} {selectedCmcs.title}
+                  {isAdditionalMode
+                    ? "Tambahan - Additional Related Knowledge"
+                    : `${getCmcsLabel(selectedCmcs!)} ${selectedCmcs!.title}`}
                 </p>
                 <p className="mt-2 text-xs leading-5 text-slate-600">
-                  {selectedCmcs.description || "Tiada penerangan"}
+                  {isAdditionalMode
+                    ? "Kandungan tambahan di luar competency rasmi C01-C06 untuk melengkapkan modul sebelum Module Builder."
+                    : selectedCmcs?.description || "Tiada penerangan"}
                 </p>
               </div>
             ) : (
@@ -1179,14 +1227,14 @@ export default function MappingPage() {
                       />
                       <div className="flex items-center gap-2">
                         <select
-                          value={blockGroups[block.id] || block.groupId || ""}
+                          value={blockGroups[block.id] || block.groupId || "group-1"}
                           onChange={(event) => groupBlock(block.id, event.target.value)}
                           className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
                         >
                           {generatedBlocks.map((option, optionIndex) => (
                             <option
                               key={option.id}
-                              value={blockGroups[option.id] || option.groupId || option.id}
+                              value={`group-${optionIndex + 1}`}
                             >
                               Group {optionIndex + 1}
                             </option>

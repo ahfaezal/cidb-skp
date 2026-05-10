@@ -36,8 +36,9 @@ class TradeCMCSMappingUpdate(BaseModel):
 
 class TradeCMCSMappingAIDraftRequest(BaseModel):
     trade_id: int
-    cmcs_id: int
+    cmcs_id: Optional[int] = None
     competency_unit_id: Optional[int] = None
+    is_additional: bool = False
 
 
 class TradeCMCSMappingAIDraftBlock(BaseModel):
