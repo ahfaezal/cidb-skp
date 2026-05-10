@@ -3,6 +3,7 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layouts/AppShell";
+import { API_BASE_URL } from "@/src/lib/api";
 import Link from "next/link";
 
 type CMCSItem = {
@@ -45,7 +46,7 @@ export default function CMCSPage() {
   const [message, setMessage] = useState("");
 
   async function getCMCSData() {
-    const response = await axios.get("http://127.0.0.1:8000/cmcs/");
+    const response = await axios.get(`${API_BASE_URL}/cmcs/`);
     setCmcsData(response.data);
   }
 
@@ -72,7 +73,7 @@ export default function CMCSPage() {
     setLoading(true);
 
     if (editingId) {
-      await axios.put(`http://127.0.0.1:8000/cmcs/${editingId}`, {
+      await axios.put(`${API_BASE_URL}/cmcs/${editingId}`, {
         code: code.trim() || null,
         title,
         description,
@@ -80,7 +81,7 @@ export default function CMCSPage() {
         sector,
       });
     } else {
-      await axios.post("http://127.0.0.1:8000/cmcs/", {
+      await axios.post(`${API_BASE_URL}/cmcs/`, {
         code: code.trim() || null,
         title,
         description,
@@ -105,7 +106,7 @@ export default function CMCSPage() {
 
   async function handlePreviewImport() {
     setMessage("");
-    const response = await axios.get("http://127.0.0.1:8000/cmcs/official-import/preview");
+    const response = await axios.get(`${API_BASE_URL}/cmcs/official-import/preview`);
     setImportPreview(response.data);
   }
 
@@ -120,9 +121,9 @@ export default function CMCSPage() {
     setMessage("");
 
     try {
-      await axios.post("http://127.0.0.1:8000/cmcs/official-import");
+      await axios.post(`${API_BASE_URL}/cmcs/official-import`);
       await getCMCSData();
-      const response = await axios.get("http://127.0.0.1:8000/cmcs/official-import/preview");
+      const response = await axios.get(`${API_BASE_URL}/cmcs/official-import/preview`);
       setImportPreview(response.data);
       setMessage("CMCS rasmi berjaya diimport ke database.");
     } finally {
@@ -135,7 +136,7 @@ export default function CMCSPage() {
 
     if (!confirmDelete) return;
 
-    await axios.delete(`http://127.0.0.1:8000/cmcs/${id}`);
+    await axios.delete(`${API_BASE_URL}/cmcs/${id}`);
 
     await getCMCSData();
   }

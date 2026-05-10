@@ -4,6 +4,7 @@ import axios from "axios";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layouts/AppShell";
+import { API_BASE_URL } from "@/src/lib/api";
 
 type Trade = {
   id: number;
@@ -89,8 +90,6 @@ type CompetencyGroupingDraft = {
   mode: "none" | "section";
   status: string;
 };
-
-const API_BASE_URL = "http://127.0.0.1:8000";
 
 function getTradeLabel(trade: Trade) {
   return `${trade.code} - ${trade.title}`;

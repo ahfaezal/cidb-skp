@@ -4,6 +4,7 @@ import axios from "axios";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layouts/AppShell";
+import { API_BASE_URL } from "@/src/lib/api";
 
 type SKPModule = {
   id: number;
@@ -23,7 +24,6 @@ type Trade = {
   sector?: string;
 };
 
-const API_BASE_URL = "http://127.0.0.1:8000";
 const MAPPING_DRAFT_MODULES = [
   {
     code: "M01",

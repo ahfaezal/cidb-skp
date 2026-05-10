@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AppShell } from "@/components/layouts/AppShell";
+import { API_BASE_URL } from "@/src/lib/api";
 
 type CMCSItem = {
   id: number;
@@ -77,13 +78,13 @@ export default function CMCSDetailPage() {
 
     try {
         const cmcsResponse = await axios.get(
-        `http://127.0.0.1:8000/cmcs/${cmcsId}`
+        `${API_BASE_URL}/cmcs/${cmcsId}`
         );
 
         setCmcs(cmcsResponse.data);
 
         const unitsResponse = await axios.get(
-        `http://127.0.0.1:8000/competency-units/cmcs/${cmcsId}`
+        `${API_BASE_URL}/competency-units/cmcs/${cmcsId}`
         );
 
         setUnits(unitsResponse.data);
@@ -94,21 +95,21 @@ export default function CMCSDetailPage() {
 
         for (const unit of unitsResponse.data) {
         const activityResponse = await axios.get(
-            `http://127.0.0.1:8000/work-activities/unit/${unit.id}`
+            `${API_BASE_URL}/work-activities/unit/${unit.id}`
         );
 
         activityMap[unit.id] = activityResponse.data;
 
         for (const activity of activityResponse.data) {
             const criteriaResponse = await axios.get(
-            `http://127.0.0.1:8000/performance-criteria/activity/${activity.id}`
+            `${API_BASE_URL}/performance-criteria/activity/${activity.id}`
             );
 
             criteriaMap[activity.id] = criteriaResponse.data;
 
             for (const pc of criteriaResponse.data) {
             const itemResponse = await axios.get(
-                `http://127.0.0.1:8000/performance-criteria-items/${pc.id}`
+                `${API_BASE_URL}/performance-criteria-items/${pc.id}`
             );
 
             itemMap[pc.id] = itemResponse.data;
@@ -137,7 +138,7 @@ export default function CMCSDetailPage() {
 
     if (!unitTitle.trim()) return;
 
-    await axios.post("http://127.0.0.1:8000/competency-units/", {
+    await axios.post(`${API_BASE_URL}/competency-units/`, {
       cmcs_id: Number(cmcsId),
       code: unitCode,
       title: unitTitle,
@@ -156,7 +157,7 @@ export default function CMCSDetailPage() {
 
     if (!activeUnitId || !activityTitle.trim()) return;
 
-    await axios.post("http://127.0.0.1:8000/work-activities/", {
+    await axios.post(`${API_BASE_URL}/work-activities/`, {
       competency_unit_id: activeUnitId,
       code: activityCode,
       title: activityTitle,
@@ -176,7 +177,7 @@ export default function CMCSDetailPage() {
 
     if (!activeActivityId || !criteriaText.trim()) return;
 
-    await axios.post("http://127.0.0.1:8000/performance-criteria/", {
+    await axios.post(`${API_BASE_URL}/performance-criteria/`, {
       work_activity_id: activeActivityId,
       criteria: criteriaText,
     });
@@ -192,7 +193,7 @@ export default function CMCSDetailPage() {
 
     if (!activeCriteriaId || !itemContent.trim()) return;
 
-    await axios.post("http://127.0.0.1:8000/performance-criteria-items/", {
+    await axios.post(`${API_BASE_URL}/performance-criteria-items/`, {
       performance_criteria_id: activeCriteriaId,
       type: itemType,
       content: itemContent,
@@ -208,28 +209,28 @@ export default function CMCSDetailPage() {
   async function handleDeleteUnit(id: number) {
     if (!window.confirm("Padam Competency Unit ini?")) return;
 
-    await axios.delete(`http://127.0.0.1:8000/competency-units/${id}`);
+    await axios.delete(`${API_BASE_URL}/competency-units/${id}`);
     await loadData();
   }
 
   async function handleDeleteActivity(id: number) {
     if (!window.confirm("Padam Work Activity ini?")) return;
 
-    await axios.delete(`http://127.0.0.1:8000/work-activities/${id}`);
+    await axios.delete(`${API_BASE_URL}/work-activities/${id}`);
     await loadData();
   }
 
   async function handleDeleteCriteria(id: number) {
     if (!window.confirm("Padam Performance Criteria ini?")) return;
 
-    await axios.delete(`http://127.0.0.1:8000/performance-criteria/${id}`);
+    await axios.delete(`${API_BASE_URL}/performance-criteria/${id}`);
     await loadData();
   }
 
   async function handleDeleteItem(id: number) {
     if (!window.confirm("Padam item ini?")) return;
 
-    await axios.delete(`http://127.0.0.1:8000/performance-criteria-items/${id}`);
+    await axios.delete(`${API_BASE_URL}/performance-criteria-items/${id}`);
     await loadData();
   }
 

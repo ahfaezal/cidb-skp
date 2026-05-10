@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layouts/AppShell";
+import { API_BASE_URL } from "@/src/lib/api";
 
 type Trade = {
   id: number;
@@ -125,7 +126,6 @@ type ReviewRecord = {
   status: string;
 };
 
-const API_BASE_URL = "http://127.0.0.1:8000";
 const WORKFLOW_STATUSES = [
   "Mapping Process",
   "Mapping Review",

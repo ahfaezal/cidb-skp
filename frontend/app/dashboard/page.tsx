@@ -4,8 +4,7 @@ import axios from "axios";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layouts/AppShell";
-
-const API_BASE_URL = "http://127.0.0.1:8000";
+import { API_BASE_URL } from "@/src/lib/api";
 
 const roles = [
   "Super Admin",

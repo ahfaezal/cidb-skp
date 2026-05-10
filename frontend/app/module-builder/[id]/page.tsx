@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layouts/AppShell";
+import { API_BASE_URL } from "@/src/lib/api";
 
 type SKPModule = {
   id: number;
@@ -49,7 +50,6 @@ type InlineGeneratedBlock = {
   content: string;
 };
 
-const API_BASE_URL = "http://127.0.0.1:8000";
 const MAPPING_EXPLANATION_SECTIONS = [
   {
     title: "Pengenalan",

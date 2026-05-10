@@ -4,6 +4,7 @@ import axios from "axios";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layouts/AppShell";
+import { API_BASE_URL } from "@/src/lib/api";
 import {
   CIDB_CATEGORIES,
   OTHER_CATEGORY_CODE,
@@ -28,7 +29,6 @@ type Trade = {
   created_at?: string;
 };
 
-const API_BASE_URL = "http://127.0.0.1:8000";
 const DEFAULT_CATEGORY_CODE = "CE";
 const DEFAULT_STATUS = "Active";
 const DEFAULT_WORKFLOW_STATUS = "Mapping Process";
