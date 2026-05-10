@@ -167,6 +167,21 @@ const REVIEW_TARGET_TYPES = [
 const REVIEW_DECISIONS = ["Approved", "Revise", "Rejected"];
 const REVIEW_STATUSES = ["Open", "Closed"];
 
+function FieldHeader({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="space-y-1">
+      <p className="text-sm font-bold text-slate-900">{title}</p>
+      <p className="text-xs leading-relaxed text-slate-500">{description}</p>
+    </div>
+  );
+}
+
 export default function TradeDetailPage() {
   const params = useParams();
   const tradeId = params.id as string;
@@ -2008,29 +2023,41 @@ export default function TradeDetailPage() {
 
               <form onSubmit={handleAddMapping} className="mt-5 grid gap-4">
                 <div className="grid gap-4 md:grid-cols-2">
-                  <select
-                    value={selectedUnitId}
-                    onChange={(e) => setSelectedUnitId(e.target.value)}
-                    className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                  >
-                    <option value="">Semua Competency Unit</option>
-                    {units.map((unit) => (
-                      <option key={unit.id} value={unit.id}>
-                        {unit.code || `CU-${String(unit.id).padStart(3, "0")}`}{" "}
-                        {unit.title}
-                      </option>
-                    ))}
-                  </select>
+                  <label className="grid gap-2">
+                    <FieldHeader
+                      title="Competency Unit CMCS"
+                      description="Pilih unit khusus jika mapping hanya berkaitan satu unit. Biarkan semua unit jika keseluruhan CMCS relevan kepada tred."
+                    />
+                    <select
+                      value={selectedUnitId}
+                      onChange={(e) => setSelectedUnitId(e.target.value)}
+                      className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                    >
+                      <option value="">Semua Competency Unit</option>
+                      {units.map((unit) => (
+                        <option key={unit.id} value={unit.id}>
+                          {unit.code || `CU-${String(unit.id).padStart(3, "0")}`}{" "}
+                          {unit.title}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
 
-                  <select
-                    value={relevanceLevel}
-                    onChange={(e) => setRelevanceLevel(e.target.value)}
-                    className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                  >
-                    <option value="High">High Relevance</option>
-                    <option value="Medium">Medium Relevance</option>
-                    <option value="Low">Low Relevance</option>
-                  </select>
+                  <label className="grid gap-2">
+                    <FieldHeader
+                      title="Tahap Relevan"
+                      description="Tetapkan keutamaan mapping: High untuk kandungan utama modul, Medium untuk sokongan, Low untuk rujukan sampingan."
+                    />
+                    <select
+                      value={relevanceLevel}
+                      onChange={(e) => setRelevanceLevel(e.target.value)}
+                      className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                    >
+                      <option value="High">High Relevance</option>
+                      <option value="Medium">Medium Relevance</option>
+                      <option value="Low">Low Relevance</option>
+                    </select>
+                  </label>
                 </div>
 
                 {selectedUnit && (
@@ -2039,12 +2066,18 @@ export default function TradeDetailPage() {
                   </p>
                 )}
 
-                <textarea
-                  value={tradeSpecificContent}
-                  onChange={(e) => setTradeSpecificContent(e.target.value)}
-                  placeholder="Trade-specific interpretation, contoh: Railway tender documentation, signalling maintenance tender requirements"
-                  className="min-h-32 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                />
+                <label className="grid gap-2">
+                  <FieldHeader
+                    title="Trade Interpretation"
+                    description="Huraikan bagaimana CMCS ini digunakan dalam konteks tred terpilih. Fokus kepada skop kerja, proses, pematuhan, risiko dan hasil kerja sebenar."
+                  />
+                  <textarea
+                    value={tradeSpecificContent}
+                    onChange={(e) => setTradeSpecificContent(e.target.value)}
+                    placeholder="Contoh: Keperluan CMCS ini digunakan untuk kerja jambatan dari aspek kontrak, operasi tapak, kawalan mutu dan pematuhan agensi."
+                    className="min-h-32 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  />
+                </label>
 
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                   <p className="text-xs font-bold uppercase text-blue-600">
@@ -2056,49 +2089,85 @@ export default function TradeDetailPage() {
                   </p>
                 </div>
 
-                <input
-                  value={draftModuleTitle}
-                  onChange={(e) => setDraftModuleTitle(e.target.value)}
-                  placeholder="Draft module title, contoh: Railway Tendering Management"
-                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                />
+                <label className="grid gap-2">
+                  <FieldHeader
+                    title="Tajuk Modul Cadangan"
+                    description="Nama modul awal yang akan dibawa ke Module Builder. Tajuk perlu jelas menggabungkan CMCS dengan skop tred."
+                  />
+                  <input
+                    value={draftModuleTitle}
+                    onChange={(e) => setDraftModuleTitle(e.target.value)}
+                    placeholder="Contoh: Pengurusan Operasi Kontraktor Kerja Jambatan"
+                    className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  />
+                </label>
 
-                <textarea
-                  value={draftObjective}
-                  onChange={(e) => setDraftObjective(e.target.value)}
-                  placeholder="Draft objective modul"
-                  className="min-h-24 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                />
+                <label className="grid gap-2">
+                  <FieldHeader
+                    title="Objektif Modul"
+                    description="Nyatakan hasil pembelajaran utama. Gunakan ayat bermula dengan kemahiran yang peserta perlu kuasai selepas modul."
+                  />
+                  <textarea
+                    value={draftObjective}
+                    onChange={(e) => setDraftObjective(e.target.value)}
+                    placeholder="Contoh: Membolehkan peserta mengurus operasi kerja jambatan mengikut keperluan CIDB, spesifikasi projek dan amalan keselamatan."
+                    className="min-h-24 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  />
+                </label>
 
-                <textarea
-                  value={draftContentOutline}
-                  onChange={(e) => setDraftContentOutline(e.target.value)}
-                  placeholder={"Draft content outline, contoh:\n1. Pengenalan\n2. Penyediaan tender railway\n3. Dokumen kos dan spesifikasi"}
-                  className="min-h-40 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                />
+                <label className="grid gap-2">
+                  <FieldHeader
+                    title="Outline Kandungan Modul"
+                    description="Senaraikan topik utama yang perlu diajar. Bahagian ini akan menjadi asas kepada kandungan modul dan learning package."
+                  />
+                  <textarea
+                    value={draftContentOutline}
+                    onChange={(e) => setDraftContentOutline(e.target.value)}
+                    placeholder={"Contoh:\n1. Keperluan pematuhan kerja jambatan\n2. Perancangan operasi tapak\n3. Kawalan mutu, keselamatan dan dokumentasi"}
+                    className="min-h-40 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  />
+                </label>
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <textarea
-                    value={suggestedLearningPackages}
-                    onChange={(e) => setSuggestedLearningPackages(e.target.value)}
-                    placeholder={"Suggested PL, contoh:\nPL01 - Railway tender documentation\nPL02 - Cost package preparation"}
-                    className="min-h-32 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                  />
+                  <label className="grid gap-2">
+                    <FieldHeader
+                      title="Cadangan Learning Package"
+                      description="Pecahkan modul kepada PL kecil. Setiap PL sepatutnya boleh diajar, dilatih dan dinilai secara berasingan."
+                    />
+                    <textarea
+                      value={suggestedLearningPackages}
+                      onChange={(e) => setSuggestedLearningPackages(e.target.value)}
+                      placeholder={"Contoh:\nPL01 - Pematuhan dan dokumentasi kerja\nPL02 - Operasi tapak dan kawalan mutu"}
+                      className="min-h-32 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                    />
+                  </label>
 
-                  <textarea
-                    value={suggestedAssessmentAreas}
-                    onChange={(e) => setSuggestedAssessmentAreas(e.target.value)}
-                    placeholder={"Suggested assessment areas, contoh:\n- Semak dokumen tender\n- Sediakan cost breakdown\n- Huraikan proses submission"}
-                    className="min-h-32 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                  />
+                  <label className="grid gap-2">
+                    <FieldHeader
+                      title="Cadangan Assessment"
+                      description="Cadangkan tugasan, soalan atau bukti penilaian yang boleh menguji penguasaan peserta terhadap modul."
+                    />
+                    <textarea
+                      value={suggestedAssessmentAreas}
+                      onChange={(e) => setSuggestedAssessmentAreas(e.target.value)}
+                      placeholder={"Contoh:\n- Semak dokumen pematuhan\n- Sediakan pelan tindakan\n- Bentang justifikasi teknikal"}
+                      className="min-h-32 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                    />
+                  </label>
                 </div>
 
-                <textarea
-                  value={mappingNotes}
-                  onChange={(e) => setMappingNotes(e.target.value)}
-                  placeholder="Mapping notes / rasional pemilihan"
-                  className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
-                />
+                <label className="grid gap-2">
+                  <FieldHeader
+                    title="Rasional Mapping"
+                    description="Terangkan kenapa CMCS ini dipilih untuk tred. Bahagian ini membantu panel menyemak dan mempertahankan keputusan mapping."
+                  />
+                  <textarea
+                    value={mappingNotes}
+                    onChange={(e) => setMappingNotes(e.target.value)}
+                    placeholder="Contoh: CMCS ini dipilih kerana ia menyokong kawalan operasi, pematuhan dan dokumentasi kerja jambatan dari peringkat tender hingga penutupan projek."
+                    className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-500"
+                  />
+                </label>
 
                 {mappingError && (
                   <p className="text-sm font-semibold text-red-600">
