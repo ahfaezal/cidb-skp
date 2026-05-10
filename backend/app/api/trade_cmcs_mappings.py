@@ -90,8 +90,16 @@ def normalize_ai_draft(draft: dict):
     }
 
     for key, fallback in required_fields.items():
-        if draft.get(key) is None:
+        value = draft.get(key)
+
+        if value is None:
             draft[key] = fallback
+        elif isinstance(value, list):
+            draft[key] = "\n".join(f"- {item}" for item in value)
+        elif isinstance(value, dict):
+            draft[key] = json.dumps(value, ensure_ascii=False)
+        else:
+            draft[key] = str(value)
 
     blocks = draft.get("blocks") or []
     normalized_blocks = []
