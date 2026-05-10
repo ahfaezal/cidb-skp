@@ -3,7 +3,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "SKP-CIDB Builder",
-  description: "Competency mapping, module authoring and assessment platform for CIDB SKP development.",
+  description:
+    "Competency mapping, module authoring and assessment platform for CIDB SKP development.",
 };
 
 export default function RootLayout({
@@ -12,8 +13,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="ms">
+      <body>{children}</body>
     </html>
   );
 }

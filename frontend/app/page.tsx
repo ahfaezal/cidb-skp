@@ -1,5 +1,11 @@
-import { redirect } from "next/navigation";
-
 export default function HomePage() {
-  redirect("/dashboard");
+  return (
+    <main style={{ padding: "40px" }}>
+      <h1>SKP CIDB Builder</h1>
+
+      <a href="/dashboard">
+        Go to Dashboard
+      </a>
+    </main>
+  );
 }
