@@ -111,6 +111,7 @@ type CompetencyGroupingDraft = {
 type GeneratedBlock = {
   id: string;
   title: string;
+  subtitle: string;
   content: string;
   groupId?: string;
 };
@@ -651,25 +652,49 @@ export default function MappingPage() {
     lines.forEach((line, index) => {
       const headingMatch = line.match(/^(\d+)[.)]\s*(.+)$/);
       const bulletMatch = line.match(/^[-*•]\s*(.+)$/);
+      const subtitleMatch = line.match(/^sub[\s-]?tajuk\s*:\s*(.+)$/i);
 
-      if (headingMatch || blocks.length === 0) {
+      if (headingMatch) {
         blocks.push({
           id: `block-${index + 1}`,
-          title: headingMatch?.[2] || draft.draft_module_title || `Item ${index + 1}`,
-          content: headingMatch ? line : bulletMatch?.[1] || line,
+          title: headingMatch[2],
+          subtitle: "",
+          content: "",
           groupId: `group-${blocks.length + 1}`,
         });
         return;
       }
 
+      if (blocks.length === 0) {
+        blocks.push({
+          id: `block-${index + 1}`,
+          title: draft.draft_module_title || `Item ${index + 1}`,
+          subtitle: "",
+          content: "",
+          groupId: "group-1",
+        });
+      }
+
       const currentBlock = blocks[blocks.length - 1];
-      currentBlock.content = `${currentBlock.content}\n${line}`;
+
+      if (subtitleMatch) {
+        currentBlock.subtitle = subtitleMatch[1];
+        return;
+      }
+
+      currentBlock.content = [
+        currentBlock.content,
+        bulletMatch ? `• ${bulletMatch[1]}` : line,
+      ]
+        .filter(Boolean)
+        .join("\n");
     });
 
     if (blocks.length === 0) {
       blocks.push({
         id: "block-1",
         title: draft.draft_module_title || "Hasil Jana AI",
+        subtitle: "",
         content: draft.trade_specific_content,
         groupId: "group-1",
       });
@@ -762,7 +787,15 @@ export default function MappingPage() {
         draft_module_title: aiDraft.draft_module_title,
         draft_objective: aiDraft.draft_objective,
         draft_content_outline: generatedBlocks
-          .map((block, index) => `${index + 1}. ${block.title}\n${block.content}`)
+          .map((block, index) =>
+            [
+              `${index + 1}. ${block.title}`,
+              block.subtitle ? `Sub Tajuk: ${block.subtitle}` : "",
+              block.content,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          )
           .join("\n\n"),
         suggested_learning_packages: groupedSummary,
         suggested_assessment_areas: aiDraft.suggested_assessment_areas,
@@ -1100,6 +1133,7 @@ export default function MappingPage() {
                           })
                         }
                         className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500"
+                        placeholder="Tajuk ringkas blok"
                       />
                       <div className="flex items-center gap-2">
                         <select
@@ -1126,6 +1160,17 @@ export default function MappingPage() {
                       </div>
                     </div>
 
+                    <input
+                      value={block.subtitle}
+                      onChange={(event) =>
+                        updateGeneratedBlock(block.id, {
+                          subtitle: event.target.value,
+                        })
+                      }
+                      className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500"
+                      placeholder="Sub tajuk / skop utama blok"
+                    />
+
                     <textarea
                       value={block.content}
                       onChange={(event) =>
@@ -1134,7 +1179,7 @@ export default function MappingPage() {
                         })
                       }
                       className="mt-3 min-h-32 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none focus:border-blue-500"
-                      placeholder={`Item ${index + 1}`}
+                      placeholder={`Sub-sub tajuk, isi penting dan bullet untuk item ${index + 1}`}
                     />
                   </div>
                 ))
@@ -1180,9 +1225,28 @@ export default function MappingPage() {
                       <h4 className="mt-1 font-bold text-slate-900">
                         {blocks[0]?.title || "Untitled Group"}
                       </h4>
-                      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-600">
+                      {blocks[0]?.subtitle && (
+                        <p className="mt-2 text-sm font-semibold text-slate-700">
+                          {blocks[0].subtitle}
+                        </p>
+                      )}
+                      <ul className="mt-3 list-disc space-y-3 pl-5 text-sm leading-6 text-slate-600">
                         {blocks.map((block) => (
-                          <li key={block.id}>{block.title}</li>
+                          <li key={block.id}>
+                            <span className="font-semibold text-slate-800">
+                              {block.title}
+                            </span>
+                            {block.subtitle && (
+                              <p className="mt-1 text-slate-700">
+                                {block.subtitle}
+                              </p>
+                            )}
+                            {block.content && (
+                              <p className="mt-1 whitespace-pre-line">
+                                {block.content}
+                              </p>
+                            )}
+                          </li>
                         ))}
                       </ul>
                     </div>

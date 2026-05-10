@@ -137,7 +137,15 @@ suggested_assessment_areas, mapping_notes.
 Guidelines:
 - Write for Malaysian CIDB SKP module development.
 - Make the content specific to the selected trade, not generic.
-- draft_content_outline should be numbered lines.
+- draft_content_outline must be structured as 5 to 8 numbered content blocks.
+- Each numbered block must start with a short title only.
+- After each numbered title, include one line beginning exactly with "Sub Tajuk:".
+- Under each Sub Tajuk, include 3 to 6 bullet lines using "- " for sub-sub topics or key teaching points.
+- Example format:
+  1. Pengenalan
+  Sub Tajuk: Skop dan konteks kerja
+  - Isi penting pertama
+  - Isi penting kedua
 - suggested_learning_packages should contain 2 to 4 PL lines.
 - suggested_assessment_areas should contain bullet lines.
 - mapping_notes should explain the mapping rationale briefly.
