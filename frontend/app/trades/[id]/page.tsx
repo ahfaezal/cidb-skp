@@ -25,6 +25,7 @@ type Trade = {
 
 type CMCSItem = {
   id: number;
+  code?: string;
   title: string;
   description?: string;
 };
@@ -328,6 +329,62 @@ export default function TradeDetailPage() {
     { id: "assessment", label: "Assessment", count: questionCount },
     { id: "preview", label: "Preview", count: null },
   ] as const;
+
+  function getCmcsLabel(item: CMCSItem) {
+    return item.code || `CMCS-${String(item.id).padStart(3, "0")}`;
+  }
+
+  function buildMappingDefaults(cmcsItem = selectedCmcs) {
+    const tradeTitle = trade?.title || "tred ini";
+    const tradeCode = trade?.code || "Tred";
+    const tradeScope =
+      trade?.description ||
+      trade?.field_title ||
+      trade?.category_name ||
+      "skop kompetensi tred";
+    const cmcsTitle = cmcsItem?.title || "CMCS";
+    const cmcsCode = cmcsItem ? getCmcsLabel(cmcsItem) : "CMCS";
+
+    return {
+      tradeSpecificContent:
+        `${cmcsCode} ${cmcsTitle} dipetakan kepada ${tradeCode} - ${tradeTitle} ` +
+        `kerana kompetensi ini menyokong ${tradeScope}. Tafsiran tred memberi fokus ` +
+        `kepada aplikasi keperluan CMCS dalam konteks kerja ${tradeTitle}, termasuk ` +
+        "perancangan, pelaksanaan, kawalan mutu, dokumentasi dan pematuhan kerja.",
+      draftModuleTitle: `${tradeTitle}: ${cmcsTitle}`,
+      draftObjective:
+        `Membolehkan peserta melaksanakan ${cmcsTitle.toLowerCase()} dalam konteks ` +
+        `${tradeTitle} mengikut keperluan CIDB, prosedur kerja dan amalan industri.`,
+      draftContentOutline:
+        `1. Pengenalan kepada ${cmcsTitle} bagi ${tradeTitle}\n` +
+        `2. Keperluan kerja, dokumen dan pematuhan berkaitan ${tradeTitle}\n` +
+        "3. Kaedah pelaksanaan, kawalan mutu dan keselamatan kerja\n" +
+        "4. Semakan hasil kerja, rekod dan penambahbaikan",
+      suggestedLearningPackages:
+        `PL01 - Asas ${cmcsTitle} untuk ${tradeTitle}\n` +
+        "PL02 - Prosedur kerja, dokumen dan pematuhan\n" +
+        "PL03 - Latihan aplikasi dan semakan hasil kerja",
+      suggestedAssessmentAreas:
+        "- Terangkan skop dan keperluan kerja\n" +
+        "- Semak dokumen/prosedur berkaitan\n" +
+        "- Sediakan cadangan tindakan atau penyelesaian\n" +
+        "- Nilai pematuhan, kualiti dan keselamatan kerja",
+      mappingNotes:
+        `Cadangan manual berdasarkan hubungan antara ${cmcsCode} dan skop ${tradeCode}.`,
+    };
+  }
+
+  function applyManualMappingDefaults() {
+    const defaults = buildMappingDefaults();
+
+    setTradeSpecificContent(defaults.tradeSpecificContent);
+    setDraftModuleTitle(defaults.draftModuleTitle);
+    setDraftObjective(defaults.draftObjective);
+    setDraftContentOutline(defaults.draftContentOutline);
+    setSuggestedLearningPackages(defaults.suggestedLearningPackages);
+    setSuggestedAssessmentAreas(defaults.suggestedAssessmentAreas);
+    setMappingNotes(defaults.mappingNotes);
+  }
 
   function firstMeaningfulLine(value?: string) {
     return (
@@ -685,18 +742,23 @@ export default function TradeDetailPage() {
     setMappingError("");
 
     try {
+      const defaults = buildMappingDefaults();
       const payload = {
         trade_id: Number(tradeId),
         cmcs_id: Number(selectedCmcsId),
         competency_unit_id: selectedUnitId ? Number(selectedUnitId) : null,
         relevance_level: relevanceLevel,
-        mapping_notes: mappingNotes,
-        trade_specific_content: tradeSpecificContent,
-        draft_module_title: draftModuleTitle,
-        draft_objective: draftObjective,
-        draft_content_outline: draftContentOutline,
-        suggested_learning_packages: suggestedLearningPackages,
-        suggested_assessment_areas: suggestedAssessmentAreas,
+        mapping_notes: mappingNotes || defaults.mappingNotes,
+        trade_specific_content:
+          tradeSpecificContent || defaults.tradeSpecificContent,
+        draft_module_title: draftModuleTitle || defaults.draftModuleTitle,
+        draft_objective: draftObjective || defaults.draftObjective,
+        draft_content_outline:
+          draftContentOutline || defaults.draftContentOutline,
+        suggested_learning_packages:
+          suggestedLearningPackages || defaults.suggestedLearningPackages,
+        suggested_assessment_areas:
+          suggestedAssessmentAreas || defaults.suggestedAssessmentAreas,
       };
 
       if (editingMappingId) {
@@ -1879,7 +1941,7 @@ export default function TradeDetailPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-xs font-bold uppercase text-blue-600">
-                            CMCS-{String(item.id).padStart(3, "0")}
+                            {getCmcsLabel(item)}
                           </p>
                           <p className="mt-1 text-sm font-semibold text-slate-900">
                             {item.title}
@@ -1917,7 +1979,7 @@ export default function TradeDetailPage() {
                 </p>
                 <p className="mt-2 text-sm font-semibold text-slate-900">
                   {selectedCmcs
-                    ? `CMCS-${String(selectedCmcs.id).padStart(3, "0")} ${selectedCmcs.title}`
+                    ? `${getCmcsLabel(selectedCmcs)} ${selectedCmcs.title}`
                     : "Pilih CMCS di panel kiri"}
                 </p>
                 {selectedCmcs?.description && (
@@ -1926,6 +1988,28 @@ export default function TradeDetailPage() {
                   </p>
                 )}
               </div>
+
+              {selectedCmcs && !editingMappingId && (
+                <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-900">
+                      Cadangan manual tersedia
+                    </p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Gunakan auto isi untuk deraf cepat, atau terus klik simpan
+                      mapping. Sistem akan mengisi medan kosong secara automatik.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={applyManualMappingDefaults}
+                    className="rounded-xl bg-white px-4 py-2 text-xs font-semibold text-blue-700 shadow-sm hover:bg-blue-100"
+                  >
+                    Auto Isi Cadangan
+                  </button>
+                </div>
+              )}
 
               <form onSubmit={handleAddMapping} className="mt-5 grid gap-4">
                 <div className="grid gap-4 md:grid-cols-2">
@@ -2037,7 +2121,7 @@ export default function TradeDetailPage() {
                       ? "Menyimpan..."
                       : editingMappingId
                         ? "Update Mapping"
-                        : "+ Simpan Mapping"}
+                        : "+ Simpan Mapping Ringkas"}
                   </button>
 
                   {editingMappingId && (
