@@ -34,6 +34,22 @@ class TradeCMCSMappingUpdate(BaseModel):
     relevance_level: Optional[str] = None
 
 
+class TradeCMCSMappingAIDraftRequest(BaseModel):
+    trade_id: int
+    cmcs_id: int
+    competency_unit_id: Optional[int] = None
+
+
+class TradeCMCSMappingAIDraftResponse(BaseModel):
+    trade_specific_content: str
+    draft_module_title: str
+    draft_objective: str
+    draft_content_outline: str
+    suggested_learning_packages: str
+    suggested_assessment_areas: str
+    mapping_notes: str
+
+
 class TradeCMCSMappingResponse(TradeCMCSMappingBase):
     id: int
     created_at: datetime

@@ -55,6 +55,16 @@ type Mapping = {
   competency_unit_title?: string;
 };
 
+type MappingAIDraft = {
+  trade_specific_content: string;
+  draft_module_title: string;
+  draft_objective: string;
+  draft_content_outline: string;
+  suggested_learning_packages: string;
+  suggested_assessment_areas: string;
+  mapping_notes: string;
+};
+
 type TradeCompetency = {
   id: number;
   trade_id: number;
@@ -186,6 +196,7 @@ export default function TradeDetailPage() {
   const [suggestedLearningPackages, setSuggestedLearningPackages] = useState("");
   const [suggestedAssessmentAreas, setSuggestedAssessmentAreas] = useState("");
   const [savingMapping, setSavingMapping] = useState(false);
+  const [generatingAIDraft, setGeneratingAIDraft] = useState(false);
   const [mappingError, setMappingError] = useState("");
   const [editingMappingId, setEditingMappingId] = useState<number | null>(null);
   const [generatingMappingId, setGeneratingMappingId] = useState<number | null>(
@@ -334,56 +345,25 @@ export default function TradeDetailPage() {
     return item.code || `CMCS-${String(item.id).padStart(3, "0")}`;
   }
 
-  function buildMappingDefaults(cmcsItem = selectedCmcs) {
-    const tradeTitle = trade?.title || "tred ini";
-    const tradeCode = trade?.code || "Tred";
-    const tradeScope =
-      trade?.description ||
-      trade?.field_title ||
-      trade?.category_name ||
-      "skop kompetensi tred";
-    const cmcsTitle = cmcsItem?.title || "CMCS";
-    const cmcsCode = cmcsItem ? getCmcsLabel(cmcsItem) : "CMCS";
-
-    return {
-      tradeSpecificContent:
-        `${cmcsCode} ${cmcsTitle} dipetakan kepada ${tradeCode} - ${tradeTitle} ` +
-        `kerana kompetensi ini menyokong ${tradeScope}. Tafsiran tred memberi fokus ` +
-        `kepada aplikasi keperluan CMCS dalam konteks kerja ${tradeTitle}, termasuk ` +
-        "perancangan, pelaksanaan, kawalan mutu, dokumentasi dan pematuhan kerja.",
-      draftModuleTitle: `${tradeTitle}: ${cmcsTitle}`,
-      draftObjective:
-        `Membolehkan peserta melaksanakan ${cmcsTitle.toLowerCase()} dalam konteks ` +
-        `${tradeTitle} mengikut keperluan CIDB, prosedur kerja dan amalan industri.`,
-      draftContentOutline:
-        `1. Pengenalan kepada ${cmcsTitle} bagi ${tradeTitle}\n` +
-        `2. Keperluan kerja, dokumen dan pematuhan berkaitan ${tradeTitle}\n` +
-        "3. Kaedah pelaksanaan, kawalan mutu dan keselamatan kerja\n" +
-        "4. Semakan hasil kerja, rekod dan penambahbaikan",
-      suggestedLearningPackages:
-        `PL01 - Asas ${cmcsTitle} untuk ${tradeTitle}\n` +
-        "PL02 - Prosedur kerja, dokumen dan pematuhan\n" +
-        "PL03 - Latihan aplikasi dan semakan hasil kerja",
-      suggestedAssessmentAreas:
-        "- Terangkan skop dan keperluan kerja\n" +
-        "- Semak dokumen/prosedur berkaitan\n" +
-        "- Sediakan cadangan tindakan atau penyelesaian\n" +
-        "- Nilai pematuhan, kualiti dan keselamatan kerja",
-      mappingNotes:
-        `Cadangan manual berdasarkan hubungan antara ${cmcsCode} dan skop ${tradeCode}.`,
-    };
+  function clearMappingDraft() {
+    setTradeSpecificContent("");
+    setDraftModuleTitle("");
+    setDraftObjective("");
+    setDraftContentOutline("");
+    setSuggestedLearningPackages("");
+    setSuggestedAssessmentAreas("");
+    setMappingNotes("");
+    setMappingError("");
   }
 
-  function applyManualMappingDefaults() {
-    const defaults = buildMappingDefaults();
-
-    setTradeSpecificContent(defaults.tradeSpecificContent);
-    setDraftModuleTitle(defaults.draftModuleTitle);
-    setDraftObjective(defaults.draftObjective);
-    setDraftContentOutline(defaults.draftContentOutline);
-    setSuggestedLearningPackages(defaults.suggestedLearningPackages);
-    setSuggestedAssessmentAreas(defaults.suggestedAssessmentAreas);
-    setMappingNotes(defaults.mappingNotes);
+  function applyAIDraft(draft: MappingAIDraft) {
+    setTradeSpecificContent(draft.trade_specific_content || "");
+    setDraftModuleTitle(draft.draft_module_title || "");
+    setDraftObjective(draft.draft_objective || "");
+    setDraftContentOutline(draft.draft_content_outline || "");
+    setSuggestedLearningPackages(draft.suggested_learning_packages || "");
+    setSuggestedAssessmentAreas(draft.suggested_assessment_areas || "");
+    setMappingNotes(draft.mapping_notes || "");
   }
 
   function firstMeaningfulLine(value?: string) {
@@ -742,23 +722,18 @@ export default function TradeDetailPage() {
     setMappingError("");
 
     try {
-      const defaults = buildMappingDefaults();
       const payload = {
         trade_id: Number(tradeId),
         cmcs_id: Number(selectedCmcsId),
         competency_unit_id: selectedUnitId ? Number(selectedUnitId) : null,
         relevance_level: relevanceLevel,
-        mapping_notes: mappingNotes || defaults.mappingNotes,
-        trade_specific_content:
-          tradeSpecificContent || defaults.tradeSpecificContent,
-        draft_module_title: draftModuleTitle || defaults.draftModuleTitle,
-        draft_objective: draftObjective || defaults.draftObjective,
-        draft_content_outline:
-          draftContentOutline || defaults.draftContentOutline,
-        suggested_learning_packages:
-          suggestedLearningPackages || defaults.suggestedLearningPackages,
-        suggested_assessment_areas:
-          suggestedAssessmentAreas || defaults.suggestedAssessmentAreas,
+        mapping_notes: mappingNotes,
+        trade_specific_content: tradeSpecificContent,
+        draft_module_title: draftModuleTitle,
+        draft_objective: draftObjective,
+        draft_content_outline: draftContentOutline,
+        suggested_learning_packages: suggestedLearningPackages,
+        suggested_assessment_areas: suggestedAssessmentAreas,
       };
 
       if (editingMappingId) {
@@ -783,13 +758,7 @@ export default function TradeDetailPage() {
       setSelectedCmcsId("");
       setSelectedUnitId("");
       setRelevanceLevel("Medium");
-      setMappingNotes("");
-      setTradeSpecificContent("");
-      setDraftModuleTitle("");
-      setDraftObjective("");
-      setDraftContentOutline("");
-      setSuggestedLearningPackages("");
-      setSuggestedAssessmentAreas("");
+      clearMappingDraft();
       setEditingMappingId(null);
       await refreshMappings();
     } catch (err) {
@@ -797,6 +766,36 @@ export default function TradeDetailPage() {
       console.error(err);
     } finally {
       setSavingMapping(false);
+    }
+  }
+
+  async function handleGenerateAIDraft() {
+    if (!selectedCmcsId) {
+      setMappingError("Pilih CMCS dahulu.");
+      return;
+    }
+
+    setGeneratingAIDraft(true);
+    setMappingError("");
+
+    try {
+      const response = await axios.post<MappingAIDraft>(
+        `${API_BASE_URL}/trade-cmcs-mappings/ai-draft`,
+        {
+          trade_id: Number(tradeId),
+          cmcs_id: Number(selectedCmcsId),
+          competency_unit_id: selectedUnitId ? Number(selectedUnitId) : null,
+        },
+      );
+
+      applyAIDraft(response.data);
+    } catch (err) {
+      setMappingError(
+        "Jana AI gagal. Semak OPENAI_API_KEY di Render atau cuba semula.",
+      );
+      console.error(err);
+    } finally {
+      setGeneratingAIDraft(false);
     }
   }
 
@@ -826,14 +825,7 @@ export default function TradeDetailPage() {
     setSelectedCmcsId("");
     setSelectedUnitId("");
     setRelevanceLevel("Medium");
-    setMappingNotes("");
-    setTradeSpecificContent("");
-    setDraftModuleTitle("");
-    setDraftObjective("");
-    setDraftContentOutline("");
-    setSuggestedLearningPackages("");
-    setSuggestedAssessmentAreas("");
-    setMappingError("");
+    clearMappingDraft();
   }
 
   async function handleDeleteMapping(id: number) {
@@ -1931,6 +1923,8 @@ export default function TradeDetailPage() {
                       onClick={() => {
                         if (!editingMappingId) {
                           setSelectedCmcsId(String(item.id));
+                          setSelectedUnitId("");
+                          clearMappingDraft();
                         }
                       }}
                       className={[
@@ -1993,20 +1987,21 @@ export default function TradeDetailPage() {
                 <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-slate-900">
-                      Cadangan manual tersedia
+                      Blok interpretasi kosong
                     </p>
                     <p className="mt-1 text-xs text-slate-600">
-                      Gunakan auto isi untuk deraf cepat, atau terus klik simpan
-                      mapping. Sistem akan mengisi medan kosong secara automatik.
+                      Klik Jana AI untuk cadangan trade interpretation, kemudian
+                      semak dan tekan Save.
                     </p>
                   </div>
 
                   <button
                     type="button"
-                    onClick={applyManualMappingDefaults}
+                    onClick={handleGenerateAIDraft}
+                    disabled={generatingAIDraft}
                     className="rounded-xl bg-white px-4 py-2 text-xs font-semibold text-blue-700 shadow-sm hover:bg-blue-100"
                   >
-                    Auto Isi Cadangan
+                    {generatingAIDraft ? "Menjana..." : "Jana AI"}
                   </button>
                 </div>
               )}
@@ -2121,8 +2116,19 @@ export default function TradeDetailPage() {
                       ? "Menyimpan..."
                       : editingMappingId
                         ? "Update Mapping"
-                        : "+ Simpan Mapping Ringkas"}
+                        : "Save"}
                   </button>
+
+                  {!editingMappingId && (
+                    <button
+                      type="button"
+                      onClick={handleGenerateAIDraft}
+                      disabled={!selectedCmcsId || generatingAIDraft}
+                      className="w-fit rounded-xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700 disabled:opacity-50"
+                    >
+                      {generatingAIDraft ? "Menjana..." : "Jana AI"}
+                    </button>
+                  )}
 
                   {editingMappingId && (
                     <button
