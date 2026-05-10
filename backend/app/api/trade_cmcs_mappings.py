@@ -129,14 +129,20 @@ CMCS:
 Competency Unit:
 - {unit.code if unit else "All"} {unit.title if unit else "Semua Competency Unit"}
 
-Return only valid JSON with these string keys:
+Return only valid JSON with these keys:
 trade_specific_content, draft_module_title, draft_objective,
 draft_content_outline, suggested_learning_packages,
-suggested_assessment_areas, mapping_notes.
+suggested_assessment_areas, mapping_notes, blocks.
 
 Guidelines:
 - Write for Malaysian CIDB SKP module development.
 - Make the content specific to the selected trade, not generic.
+- blocks must be an array of 5 to 8 objects.
+- Each blocks object must have:
+  - title: short module content heading, maximum 12 words.
+  - subtitle: narrower scope or teaching focus, maximum 16 words.
+  - items: 3 to 6 bullet points as plain strings.
+- blocks is the primary output used by the UI. Do not put the whole paragraph into title.
 - draft_content_outline must be structured as 5 to 8 numbered content blocks.
 - Each numbered block must start with a short title only.
 - After each numbered title, include one line beginning exactly with "Sub Tajuk:".

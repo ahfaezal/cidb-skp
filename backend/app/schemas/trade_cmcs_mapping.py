@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel
 
@@ -40,6 +40,12 @@ class TradeCMCSMappingAIDraftRequest(BaseModel):
     competency_unit_id: Optional[int] = None
 
 
+class TradeCMCSMappingAIDraftBlock(BaseModel):
+    title: str
+    subtitle: str
+    items: List[str]
+
+
 class TradeCMCSMappingAIDraftResponse(BaseModel):
     trade_specific_content: str
     draft_module_title: str
@@ -48,6 +54,7 @@ class TradeCMCSMappingAIDraftResponse(BaseModel):
     suggested_learning_packages: str
     suggested_assessment_areas: str
     mapping_notes: str
+    blocks: Optional[List[TradeCMCSMappingAIDraftBlock]] = None
 
 
 class TradeCMCSMappingResponse(TradeCMCSMappingBase):

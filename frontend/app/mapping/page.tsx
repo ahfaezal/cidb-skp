@@ -37,6 +37,11 @@ type MappingAIDraft = {
   suggested_learning_packages: string;
   suggested_assessment_areas: string;
   mapping_notes: string;
+  blocks?: {
+    title: string;
+    subtitle: string;
+    items: string[];
+  }[];
 };
 
 type Mapping = {
@@ -112,7 +117,7 @@ type GeneratedBlock = {
   id: string;
   title: string;
   subtitle: string;
-  content: string;
+  items: string[];
   groupId?: string;
 };
 
@@ -643,6 +648,16 @@ export default function MappingPage() {
   }
 
   function splitAIDraftIntoBlocks(draft: MappingAIDraft): GeneratedBlock[] {
+    if (draft.blocks?.length) {
+      return draft.blocks.map((block, index) => ({
+        id: `block-${index + 1}`,
+        title: block.title,
+        subtitle: block.subtitle,
+        items: block.items,
+        groupId: `group-${index + 1}`,
+      }));
+    }
+
     const lines = draft.draft_content_outline
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -659,7 +674,7 @@ export default function MappingPage() {
           id: `block-${index + 1}`,
           title: headingMatch[2],
           subtitle: "",
-          content: "",
+          items: [],
           groupId: `group-${blocks.length + 1}`,
         });
         return;
@@ -670,7 +685,7 @@ export default function MappingPage() {
           id: `block-${index + 1}`,
           title: draft.draft_module_title || `Item ${index + 1}`,
           subtitle: "",
-          content: "",
+          items: [],
           groupId: "group-1",
         });
       }
@@ -682,12 +697,10 @@ export default function MappingPage() {
         return;
       }
 
-      currentBlock.content = [
-        currentBlock.content,
-        bulletMatch ? `• ${bulletMatch[1]}` : line,
-      ]
-        .filter(Boolean)
-        .join("\n");
+      currentBlock.items = [
+        ...currentBlock.items,
+        bulletMatch ? bulletMatch[1] : line,
+      ];
     });
 
     if (blocks.length === 0) {
@@ -695,7 +708,7 @@ export default function MappingPage() {
         id: "block-1",
         title: draft.draft_module_title || "Hasil Jana AI",
         subtitle: "",
-        content: draft.trade_specific_content,
+        items: [draft.trade_specific_content],
         groupId: "group-1",
       });
     }
@@ -710,6 +723,35 @@ export default function MappingPage() {
     setGeneratedBlocks((current) =>
       current.map((block) =>
         block.id === blockId ? { ...block, ...update } : block,
+      ),
+    );
+  }
+
+  function updateGeneratedBlockItem(
+    blockId: string,
+    itemIndex: number,
+    value: string,
+  ) {
+    setGeneratedBlocks((current) =>
+      current.map((block) =>
+        block.id === blockId
+          ? {
+              ...block,
+              items: block.items.map((item, index) =>
+                index === itemIndex ? value : item,
+              ),
+            }
+          : block,
+      ),
+    );
+  }
+
+  function addGeneratedBlockItem(blockId: string) {
+    setGeneratedBlocks((current) =>
+      current.map((block) =>
+        block.id === blockId
+          ? { ...block, items: [...block.items, ""] }
+          : block,
       ),
     );
   }
@@ -791,7 +833,7 @@ export default function MappingPage() {
             [
               `${index + 1}. ${block.title}`,
               block.subtitle ? `Sub Tajuk: ${block.subtitle}` : "",
-              block.content,
+              ...block.items.map((item) => `- ${item}`),
             ]
               .filter(Boolean)
               .join("\n"),
@@ -1119,7 +1161,7 @@ export default function MappingPage() {
                   diedit dan digabungkan sebelum disimpan.
                 </div>
               ) : (
-                generatedBlocks.map((block, index) => (
+                generatedBlocks.map((block) => (
                   <div
                     key={block.id}
                     className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm"
@@ -1171,16 +1213,33 @@ export default function MappingPage() {
                       placeholder="Sub tajuk / skop utama blok"
                     />
 
-                    <textarea
-                      value={block.content}
-                      onChange={(event) =>
-                        updateGeneratedBlock(block.id, {
-                          content: event.target.value,
-                        })
-                      }
-                      className="mt-3 min-h-32 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none focus:border-blue-500"
-                      placeholder={`Sub-sub tajuk, isi penting dan bullet untuk item ${index + 1}`}
-                    />
+                    <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-bold uppercase text-slate-500">
+                        Sub-sub Tajuk / Isi Penting
+                      </p>
+                      {block.items.map((item, itemIndex) => (
+                        <input
+                          key={`${block.id}-${itemIndex}`}
+                          value={item}
+                          onChange={(event) =>
+                            updateGeneratedBlockItem(
+                              block.id,
+                              itemIndex,
+                              event.target.value,
+                            )
+                          }
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                          placeholder={`Isi penting ${itemIndex + 1}`}
+                        />
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => addGeneratedBlockItem(block.id)}
+                        className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-blue-700 shadow-sm hover:bg-blue-50"
+                      >
+                        + Tambah Isi
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -1241,10 +1300,14 @@ export default function MappingPage() {
                                 {block.subtitle}
                               </p>
                             )}
-                            {block.content && (
-                              <p className="mt-1 whitespace-pre-line">
-                                {block.content}
-                              </p>
+                            {block.items.length > 0 && (
+                              <ul className="mt-2 list-disc space-y-1 pl-5">
+                                {block.items.map((item, itemIndex) => (
+                                  <li key={`${block.id}-group-${itemIndex}`}>
+                                    {item}
+                                  </li>
+                                ))}
+                              </ul>
                             )}
                           </li>
                         ))}
