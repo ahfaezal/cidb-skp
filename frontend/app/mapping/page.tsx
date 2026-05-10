@@ -687,8 +687,17 @@ export default function MappingPage() {
       try {
         const response = await axios.get(`${API_BASE_URL}/trades/`);
         if (!cancelled) {
+          const queryTradeId = Number(
+            new URLSearchParams(window.location.search).get("tradeId"),
+          );
+          const hasQueryTrade = response.data.some(
+            (trade: Trade) => trade.id === queryTradeId,
+          );
+
           setTrades(response.data);
-          setSelectedTradeId(response.data[0]?.id || null);
+          setSelectedTradeId(
+            hasQueryTrade ? queryTradeId : response.data[0]?.id || null,
+          );
         }
       } finally {
         if (!cancelled) setLoading(false);

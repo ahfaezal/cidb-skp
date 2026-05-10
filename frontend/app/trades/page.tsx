@@ -390,10 +390,15 @@ export default function TradesPage() {
               trades.map((trade) => (
                 <div
                   key={trade.id}
-                  className="grid gap-4 px-6 py-5 md:grid-cols-[110px_1.3fr_1fr_180px_160px_190px]"
+                  className="grid gap-4 px-6 py-5 md:grid-cols-[110px_1.3fr_1fr_180px_160px_260px]"
                 >
                   <div>
-                    <p className="font-bold text-blue-600">{trade.code}</p>
+                    <Link
+                      href={`/trades/${trade.id}`}
+                      className="font-bold text-blue-600 hover:text-blue-700 hover:underline"
+                    >
+                      {trade.code}
+                    </Link>
                     <p className="mt-1 text-xs text-slate-500">
                       {getTradeFieldLabel(trade)}
                     </p>
@@ -429,6 +434,20 @@ export default function TradesPage() {
                   </div>
 
                   <div className="flex items-center justify-end gap-2">
+                    <Link
+                      href={`/trades/${trade.id}`}
+                      className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                    >
+                      Buka
+                    </Link>
+
+                    <Link
+                      href={`/mapping?tradeId=${trade.id}`}
+                      className="rounded-lg bg-green-50 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-100"
+                    >
+                      Mapping
+                    </Link>
+
                     <button
                       onClick={() => handleEdit(trade)}
                       className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-100"
