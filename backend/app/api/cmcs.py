@@ -56,91 +56,6 @@ def create_cmcs(
     return new_cmcs
 
 
-def run_official_cmcs_import(db: Session):
-    return run_official_cmcs_import(db)
-
-
-@router.get("/{cmcs_id}", response_model=CMCSResponse)
-def get_cmcs(
-    cmcs_id: int,
-    db: Session = Depends(get_db)
-):
-    item = db.query(CMCS).filter(
-        CMCS.id == cmcs_id
-    ).first()
-
-    if not item:
-        raise HTTPException(
-            status_code=404,
-            detail="CMCS not found"
-        )
-
-    return item
-
-
-@router.put("/{cmcs_id}", response_model=CMCSResponse)
-def update_cmcs(
-    cmcs_id: int,
-    data: CMCSUpdate,
-    db: Session = Depends(get_db)
-):
-    item = db.query(CMCS).filter(
-        CMCS.id == cmcs_id
-    ).first()
-
-    if not item:
-        raise HTTPException(
-            status_code=404,
-            detail="CMCS not found"
-        )
-
-    update_data = data.model_dump(
-        exclude_unset=True
-    )
-
-    if "code" in update_data and update_data["code"]:
-        existing = (
-            db.query(CMCS)
-            .filter(CMCS.code == update_data["code"], CMCS.id != cmcs_id)
-            .first()
-        )
-        if existing:
-            raise HTTPException(status_code=400, detail="CMCS code already exists")
-
-    for key, value in update_data.items():
-        setattr(item, key, value)
-
-    db.commit()
-
-    db.refresh(item)
-
-    return item
-
-
-@router.delete("/{cmcs_id}")
-def delete_cmcs(
-    cmcs_id: int,
-    db: Session = Depends(get_db)
-):
-    item = db.query(CMCS).filter(
-        CMCS.id == cmcs_id
-    ).first()
-
-    if not item:
-        raise HTTPException(
-            status_code=404,
-            detail="CMCS not found"
-        )
-
-    db.delete(item)
-
-    db.commit()
-
-    return {
-        "message": "Deleted successfully"
-    }
-
-
 def get_official_import_summary():
     competencies = []
 
@@ -267,4 +182,85 @@ def import_official_cmcs(db: Session = Depends(get_db)):
         "message": "Official CMCS imported successfully",
         "summary": get_official_import_summary(),
         "imported": imported,
+    }
+
+
+@router.get("/{cmcs_id}", response_model=CMCSResponse)
+def get_cmcs(
+    cmcs_id: int,
+    db: Session = Depends(get_db)
+):
+    item = db.query(CMCS).filter(
+        CMCS.id == cmcs_id
+    ).first()
+
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="CMCS not found"
+        )
+
+    return item
+
+
+@router.put("/{cmcs_id}", response_model=CMCSResponse)
+def update_cmcs(
+    cmcs_id: int,
+    data: CMCSUpdate,
+    db: Session = Depends(get_db)
+):
+    item = db.query(CMCS).filter(
+        CMCS.id == cmcs_id
+    ).first()
+
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="CMCS not found"
+        )
+
+    update_data = data.model_dump(
+        exclude_unset=True
+    )
+
+    if "code" in update_data and update_data["code"]:
+        existing = (
+            db.query(CMCS)
+            .filter(CMCS.code == update_data["code"], CMCS.id != cmcs_id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=400, detail="CMCS code already exists")
+
+    for key, value in update_data.items():
+        setattr(item, key, value)
+
+    db.commit()
+
+    db.refresh(item)
+
+    return item
+
+
+@router.delete("/{cmcs_id}")
+def delete_cmcs(
+    cmcs_id: int,
+    db: Session = Depends(get_db)
+):
+    item = db.query(CMCS).filter(
+        CMCS.id == cmcs_id
+    ).first()
+
+    if not item:
+        raise HTTPException(
+            status_code=404,
+            detail="CMCS not found"
+        )
+
+    db.delete(item)
+
+    db.commit()
+
+    return {
+        "message": "Deleted successfully"
     }

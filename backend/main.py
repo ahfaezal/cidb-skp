@@ -111,3 +111,11 @@ app.include_router(competency_units_router)
 app.include_router(work_activities_router)
 app.include_router(performance_criteria_router)
 app.include_router(performance_criteria_items_router)
+
+
+@app.get("/")
+def root():
+    return {
+        "message": "SKP-CIDB Backend Running",
+        "status": "ok",
+    }
