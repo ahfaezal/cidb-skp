@@ -435,13 +435,6 @@ export default function TradesPage() {
 
                   <div className="flex items-center justify-end gap-2">
                     <Link
-                      href={`/trades/${trade.id}`}
-                      className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200"
-                    >
-                      Buka
-                    </Link>
-
-                    <Link
                       href={`/mapping?tradeId=${trade.id}`}
                       className="rounded-lg bg-green-50 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-100"
                     >

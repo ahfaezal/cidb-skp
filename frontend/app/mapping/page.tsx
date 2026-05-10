@@ -22,6 +22,23 @@ type Trade = {
   workflow_status?: string;
 };
 
+type CMCSItem = {
+  id: number;
+  code?: string;
+  title: string;
+  description?: string;
+};
+
+type MappingAIDraft = {
+  trade_specific_content: string;
+  draft_module_title: string;
+  draft_objective: string;
+  draft_content_outline: string;
+  suggested_learning_packages: string;
+  suggested_assessment_areas: string;
+  mapping_notes: string;
+};
+
 type Mapping = {
   id: number;
   trade_id: number;
@@ -89,6 +106,13 @@ type SectionClusterDraft = {
 type CompetencyGroupingDraft = {
   mode: "none" | "section";
   status: string;
+};
+
+type GeneratedBlock = {
+  id: string;
+  title: string;
+  content: string;
+  groupId?: string;
 };
 
 function getTradeLabel(trade: Trade) {
@@ -481,10 +505,18 @@ function parseMappingSections(mapping: Mapping): MappingSection[] {
 
 export default function MappingPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [cmcsItems, setCmcsItems] = useState<CMCSItem[]>([]);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
+  const [selectedCmcsId, setSelectedCmcsId] = useState<number | null>(null);
   const [mappings, setMappings] = useState<Mapping[]>([]);
   const [modules, setModules] = useState<SKPModule[]>([]);
   const [packages, setPackages] = useState<LearningPackage[]>([]);
+  const [aiDraft, setAiDraft] = useState<MappingAIDraft | null>(null);
+  const [generatedBlocks, setGeneratedBlocks] = useState<GeneratedBlock[]>([]);
+  const [blockGroups, setBlockGroups] = useState<Record<string, string>>({});
+  const [generatingAI, setGeneratingAI] = useState(false);
+  const [savingWorkspace, setSavingWorkspace] = useState(false);
+  const [workspaceMessage, setWorkspaceMessage] = useState("");
   const [competencyGrouping, setCompetencyGrouping] = useState<
     Record<string, CompetencyGroupingDraft>
   >({});
@@ -493,6 +525,17 @@ export default function MappingPage() {
   const [loading, setLoading] = useState(true);
 
   const selectedTrade = trades.find((trade) => trade.id === selectedTradeId);
+  const selectedCmcs = cmcsItems.find((item) => item.id === selectedCmcsId);
+  const groupedBlocks = useMemo(() => {
+    const groups = new Map<string, GeneratedBlock[]>();
+
+    generatedBlocks.forEach((block, index) => {
+      const key = blockGroups[block.id] || `group-${index + 1}`;
+      groups.set(key, [...(groups.get(key) || []), block]);
+    });
+
+    return [...groups.entries()];
+  }, [blockGroups, generatedBlocks]);
   const useSampleMatrix =
     selectedTrade?.code === "RWY" ||
     selectedTrade?.code === "E13" ||
@@ -594,6 +637,157 @@ export default function MappingPage() {
     }));
   }
 
+  function getCmcsLabel(item: CMCSItem) {
+    return item.code || `CMCS-${String(item.id).padStart(3, "0")}`;
+  }
+
+  function splitAIDraftIntoBlocks(draft: MappingAIDraft): GeneratedBlock[] {
+    const lines = draft.draft_content_outline
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const blocks: GeneratedBlock[] = [];
+
+    lines.forEach((line, index) => {
+      const headingMatch = line.match(/^(\d+)[.)]\s*(.+)$/);
+      const bulletMatch = line.match(/^[-*•]\s*(.+)$/);
+
+      if (headingMatch || blocks.length === 0) {
+        blocks.push({
+          id: `block-${index + 1}`,
+          title: headingMatch?.[2] || draft.draft_module_title || `Item ${index + 1}`,
+          content: headingMatch ? line : bulletMatch?.[1] || line,
+          groupId: `group-${blocks.length + 1}`,
+        });
+        return;
+      }
+
+      const currentBlock = blocks[blocks.length - 1];
+      currentBlock.content = `${currentBlock.content}\n${line}`;
+    });
+
+    if (blocks.length === 0) {
+      blocks.push({
+        id: "block-1",
+        title: draft.draft_module_title || "Hasil Jana AI",
+        content: draft.trade_specific_content,
+        groupId: "group-1",
+      });
+    }
+
+    return blocks;
+  }
+
+  function updateGeneratedBlock(
+    blockId: string,
+    update: Partial<GeneratedBlock>,
+  ) {
+    setGeneratedBlocks((current) =>
+      current.map((block) =>
+        block.id === blockId ? { ...block, ...update } : block,
+      ),
+    );
+  }
+
+  function groupBlock(blockId: string, targetGroupId?: string) {
+    setBlockGroups((current) => {
+      const fallbackGroup = `group-${Object.keys(current).length + 1}`;
+
+      return {
+        ...current,
+        [blockId]: targetGroupId || current[blockId] || fallbackGroup,
+      };
+    });
+  }
+
+  async function generateMappingAI() {
+    if (!selectedTradeId || !selectedCmcsId) {
+      setWorkspaceMessage("Pilih tred dan CMCS reference dahulu.");
+      return;
+    }
+
+    setGeneratingAI(true);
+    setWorkspaceMessage("");
+
+    try {
+      const response = await axios.post<MappingAIDraft>(
+        `${API_BASE_URL}/trade-cmcs-mappings/ai-draft`,
+        {
+          trade_id: selectedTradeId,
+          cmcs_id: selectedCmcsId,
+          competency_unit_id: null,
+        },
+      );
+      const blocks = splitAIDraftIntoBlocks(response.data);
+
+      setAiDraft(response.data);
+      setGeneratedBlocks(blocks);
+      setBlockGroups(
+        Object.fromEntries(blocks.map((block) => [block.id, block.groupId || block.id])),
+      );
+    } catch (err) {
+      setWorkspaceMessage("Jana AI gagal. Semak backend atau API key.");
+      console.error(err);
+    } finally {
+      setGeneratingAI(false);
+    }
+  }
+
+  async function saveMappingWorkspace() {
+    if (!selectedTradeId || !selectedCmcsId || !aiDraft) {
+      setWorkspaceMessage("Jana AI dahulu sebelum save.");
+      return;
+    }
+
+    setSavingWorkspace(true);
+    setWorkspaceMessage("");
+
+    const groupedSummary = groupedBlocks
+      .map(
+        ([groupId, blocks], index) =>
+          `Group ${index + 1} (${groupId})\n${blocks
+            .map((block) => `- ${block.title}`)
+            .join("\n")}`,
+      )
+      .join("\n\n");
+
+    try {
+      await axios.post(`${API_BASE_URL}/trade-cmcs-mappings/`, {
+        trade_id: selectedTradeId,
+        cmcs_id: selectedCmcsId,
+        competency_unit_id: null,
+        relevance_level: "High",
+        mapping_notes: `${aiDraft.mapping_notes}\n\nGrouping:\n${groupedSummary}`,
+        trade_specific_content: aiDraft.trade_specific_content,
+        draft_module_title: aiDraft.draft_module_title,
+        draft_objective: aiDraft.draft_objective,
+        draft_content_outline: generatedBlocks
+          .map((block, index) => `${index + 1}. ${block.title}\n${block.content}`)
+          .join("\n\n"),
+        suggested_learning_packages: groupedSummary,
+        suggested_assessment_areas: aiDraft.suggested_assessment_areas,
+      });
+
+      setWorkspaceMessage("Mapping dan grouping berjaya disimpan.");
+      setSavedMatrixRows((current) => ({
+        ...current,
+        [selectedCmcs?.code || String(selectedCmcsId)]: true,
+      }));
+
+      const mappingResponse = await axios.get(
+        `${API_BASE_URL}/trade-cmcs-mappings/trade/${selectedTradeId}`,
+      );
+      setMappings(mappingResponse.data);
+    } catch (err) {
+      setWorkspaceMessage(
+        "Save gagal. Mapping mungkin sudah wujud untuk CMCS ini.",
+      );
+      console.error(err);
+    } finally {
+      setSavingWorkspace(false);
+    }
+  }
+
   function updateSectionCluster(
     row: MatrixRow,
     rowIndex: number,
@@ -685,18 +879,23 @@ export default function MappingPage() {
 
     async function loadTrades() {
       try {
-        const response = await axios.get(`${API_BASE_URL}/trades/`);
+        const [tradeResponse, cmcsResponse] = await Promise.all([
+          axios.get(`${API_BASE_URL}/trades/`),
+          axios.get(`${API_BASE_URL}/cmcs/`),
+        ]);
         if (!cancelled) {
           const queryTradeId = Number(
             new URLSearchParams(window.location.search).get("tradeId"),
           );
-          const hasQueryTrade = response.data.some(
+          const hasQueryTrade = tradeResponse.data.some(
             (trade: Trade) => trade.id === queryTradeId,
           );
 
-          setTrades(response.data);
+          setTrades(tradeResponse.data);
+          setCmcsItems(cmcsResponse.data);
+          setSelectedCmcsId(cmcsResponse.data[0]?.id || null);
           setSelectedTradeId(
-            hasQueryTrade ? queryTradeId : response.data[0]?.id || null,
+            hasQueryTrade ? queryTradeId : tradeResponse.data[0]?.id || null,
           );
         }
       } finally {
@@ -797,7 +996,220 @@ export default function MappingPage() {
           ))}
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <section className="grid gap-6 xl:grid-cols-[360px_1fr_360px]">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <h2 className="text-lg font-bold text-slate-900">
+                CMCS Reference
+              </h2>
+            </div>
+
+            <div className="max-h-[760px] divide-y divide-slate-100 overflow-y-auto">
+              {cmcsItems.map((item) => {
+                const isSelected = selectedCmcsId === item.id;
+
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCmcsId(item.id);
+                      setAiDraft(null);
+                      setGeneratedBlocks([]);
+                      setBlockGroups({});
+                      setWorkspaceMessage("");
+                    }}
+                    className={[
+                      "w-full px-5 py-4 text-left transition",
+                      isSelected ? "bg-blue-50" : "hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    <p className="text-xs font-bold uppercase text-blue-600">
+                      {getCmcsLabel(item)}
+                    </p>
+                    <p className="mt-1 text-sm font-bold text-slate-900">
+                      {item.title}
+                    </p>
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
+                      {item.description || "Tiada penerangan"}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">
+                  Trade Interpretation
+                </h2>
+                <p className="mt-1 text-sm text-slate-500">
+                  Pilih CMCS reference, jana AI, semak blok kandungan dan tekan
+                  Grouping pada item yang hendak digabungkan.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={generateMappingAI}
+                disabled={!selectedTradeId || !selectedCmcsId || generatingAI}
+                className="rounded-xl bg-slate-900 px-5 py-3 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50"
+              >
+                {generatingAI ? "Menjana..." : "Jana AI"}
+              </button>
+            </div>
+
+            {selectedCmcs ? (
+              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-bold uppercase text-slate-500">
+                  Selected Reference
+                </p>
+                <p className="mt-2 text-sm font-bold text-slate-900">
+                  {getCmcsLabel(selectedCmcs)} {selectedCmcs.title}
+                </p>
+                <p className="mt-2 text-xs leading-5 text-slate-600">
+                  {selectedCmcs.description || "Tiada penerangan"}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-5 rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                Pilih CMCS reference di panel kiri.
+              </div>
+            )}
+
+            <div className="mt-6 space-y-4">
+              {generatedBlocks.length === 0 ? (
+                <div className="min-h-[460px] rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-sm text-slate-500">
+                  Blok hasil AI akan dipaparkan di sini. Setiap blok boleh
+                  diedit dan digabungkan sebelum disimpan.
+                </div>
+              ) : (
+                generatedBlocks.map((block, index) => (
+                  <div
+                    key={block.id}
+                    className="rounded-2xl border border-blue-200 bg-white p-4 shadow-sm"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <input
+                        value={block.title}
+                        onChange={(event) =>
+                          updateGeneratedBlock(block.id, {
+                            title: event.target.value,
+                          })
+                        }
+                        className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500"
+                      />
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={blockGroups[block.id] || block.groupId || ""}
+                          onChange={(event) => groupBlock(block.id, event.target.value)}
+                          className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
+                        >
+                          {generatedBlocks.map((option, optionIndex) => (
+                            <option
+                              key={option.id}
+                              value={blockGroups[option.id] || option.groupId || option.id}
+                            >
+                              Group {optionIndex + 1}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => groupBlock(block.id)}
+                          className="rounded-xl bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                        >
+                          Grouping
+                        </button>
+                      </div>
+                    </div>
+
+                    <textarea
+                      value={block.content}
+                      onChange={(event) =>
+                        updateGeneratedBlock(block.id, {
+                          content: event.target.value,
+                        })
+                      }
+                      className="mt-3 min-h-32 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none focus:border-blue-500"
+                      placeholder={`Item ${index + 1}`}
+                    />
+                  </div>
+                ))
+              )}
+            </div>
+
+            {workspaceMessage && (
+              <p className="mt-4 rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800">
+                {workspaceMessage}
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-5">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-bold uppercase text-blue-600">
+                Hasil Grouping
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">
+                Sahkan sebelum Module Builder
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Item yang berkongsi group akan digabungkan sebagai cadangan LP
+                yang sama. Fasilitator/panel boleh ubah group sebelum save.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200 px-5 py-4">
+                <h3 className="font-bold text-slate-900">Grouping Box</h3>
+              </div>
+              <div className="divide-y divide-slate-200">
+                {groupedBlocks.length === 0 ? (
+                  <p className="p-5 text-sm text-slate-500">
+                    Belum ada hasil grouping.
+                  </p>
+                ) : (
+                  groupedBlocks.map(([groupId, blocks], index) => (
+                    <div key={groupId} className="p-5">
+                      <p className="text-xs font-bold uppercase text-blue-600">
+                        Group {index + 1}
+                      </p>
+                      <h4 className="mt-1 font-bold text-slate-900">
+                        {blocks[0]?.title || "Untitled Group"}
+                      </h4>
+                      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 text-slate-600">
+                        {blocks.map((block) => (
+                          <li key={block.id}>{block.title}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={saveMappingWorkspace}
+              disabled={savingWorkspace || generatedBlocks.length === 0}
+              className="w-full rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {savingWorkspace ? "Menyimpan..." : "Save Mapping & Grouping"}
+            </button>
+
+            <Link
+              href="/module-builder"
+              className="block rounded-xl bg-slate-100 px-5 py-3 text-center text-sm font-bold text-slate-700 hover:bg-slate-200"
+            >
+              Ke Module Builder
+            </Link>
+          </div>
+        </section>
+
+        <section className="hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
             <div>
               <h2 className="text-lg font-bold text-slate-900">
@@ -912,7 +1324,7 @@ export default function MappingPage() {
           </div>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1fr_420px]">
+        <section className="hidden gap-6 xl:grid-cols-[1fr_420px]">
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-6 py-4">
               <h2 className="text-lg font-bold text-slate-900">
