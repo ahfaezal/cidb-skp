@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import List
 
 import httpx
@@ -66,6 +67,18 @@ def extract_response_text(data: dict):
 
 
 def normalize_ai_draft(draft: dict):
+    if isinstance(draft, list):
+        draft = {"blocks": draft}
+
+    if not isinstance(draft, dict):
+        draft = {}
+
+    for nested_key in ("draft", "mapping", "result", "data"):
+        nested = draft.get(nested_key)
+        if isinstance(nested, dict):
+            draft = {**draft, **nested}
+            break
+
     required_fields = {
         "trade_specific_content": "",
         "draft_module_title": "",
@@ -99,9 +112,57 @@ def normalize_ai_draft(draft: dict):
             }
         )
 
+    if not normalized_blocks and draft.get("draft_content_outline"):
+        normalized_blocks = blocks_from_outline(draft["draft_content_outline"])
+
+    if not normalized_blocks and draft.get("trade_specific_content"):
+        normalized_blocks = [
+            {
+                "title": "Pengenalan",
+                "subtitle": "Konteks dan skop tred",
+                "items": [draft["trade_specific_content"]],
+            }
+        ]
+
     draft["blocks"] = normalized_blocks
 
     return draft
+
+
+def blocks_from_outline(outline: str):
+    blocks = []
+    current_block = None
+
+    for raw_line in outline.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        heading_match = re.match(r"^(\d+)[.)]\s*(.+)$", line)
+        subtitle_match = re.match(r"^sub[\s-]?tajuk\s*:\s*(.+)$", line, re.I)
+        bullet_match = re.match(r"^[-*•]\s*(.+)$", line)
+
+        if heading_match:
+            current_block = {
+                "title": heading_match.group(2).strip(),
+                "subtitle": "",
+                "items": [],
+            }
+            blocks.append(current_block)
+            continue
+
+        if current_block is None:
+            current_block = {"title": "Pengenalan", "subtitle": "", "items": []}
+            blocks.append(current_block)
+
+        if subtitle_match:
+            current_block["subtitle"] = subtitle_match.group(1).strip()
+        else:
+            current_block["items"].append(
+                bullet_match.group(1).strip() if bullet_match else line
+            )
+
+    return blocks
 
 
 def get_required_item(model, item_id: int, label: str, db: Session):
@@ -262,7 +323,20 @@ Guidelines:
             detail="AI response was not valid JSON.",
         ) from exc
 
-    return TradeCMCSMappingAIDraftResponse(**normalize_ai_draft(draft))
+    normalized_draft = normalize_ai_draft(draft)
+
+    if cmcs_code == "C01" and normalized_draft["blocks"]:
+        normalized_draft["blocks"][0]["title"] = "Pengenalan"
+        if not normalized_draft["blocks"][0]["subtitle"]:
+            normalized_draft["blocks"][0]["subtitle"] = "Konteks dan pengenalan tred"
+
+    try:
+        return TradeCMCSMappingAIDraftResponse(**normalized_draft)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"AI response could not be converted into mapping blocks: {exc}",
+        ) from exc
 
 
 @router.post("/", response_model=TradeCMCSMappingResponse)
