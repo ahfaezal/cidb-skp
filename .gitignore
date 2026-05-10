@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/venv/
+.venv/
+
+# Build output
+.next/
+frontend/.next/
+dist/
+build/
+out/
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+
+# Logs
+*.log
+frontend/next-dev.log
+backend/fastapi-dev.log
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Local generated files
+*.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+frontend/structure-clean.txt
+frontend/.git.local-backup/
+storage/*
+!storage/.gitkeep
+
+# Source reference files kept outside Git unless explicitly needed
+/CIDB Code.pdf
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
