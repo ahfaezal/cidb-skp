@@ -112,6 +112,103 @@ function getInsertLabel(type: string) {
   return labels[type] || "BAHAN SOKONGAN";
 }
 
+function parseMarkdownTableBlock(content: string) {
+  const rows = content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("|"))
+    .filter((line) => !/^\|\s*[-:\s|]+\|?$/.test(line))
+    .map((line) =>
+      line
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim()),
+    )
+    .filter((row) => row.length > 0);
+
+  if (rows.length < 2) return null;
+
+  return {
+    headers: rows[0],
+    body: rows.slice(1),
+  };
+}
+
+function renderContentBlock(section: string, index: number) {
+  const labelMatch = section.match(/^\[(.+?)\]\n([\s\S]*?)\n\[TAMAT .+?\]$/);
+
+  if (labelMatch) {
+    const label = labelMatch[1];
+    const body = labelMatch[2].trim();
+    const table = parseMarkdownTableBlock(body);
+
+    if (label.includes("JADUAL") && table) {
+      return (
+        <section key={`block-${index}`} className="rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <h4 className="text-sm font-bold uppercase text-slate-700">{label}</h4>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+              <thead className="bg-slate-50">
+                <tr>
+                  {table.headers.map((header, headerIndex) => (
+                    <th
+                      key={`${header}-${headerIndex}`}
+                      className="px-4 py-3 font-bold text-slate-700"
+                    >
+                      {header}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {table.body.map((row, rowIndex) => (
+                  <tr key={`table-row-${rowIndex}`}>
+                    {row.map((cell, cellIndex) => (
+                      <td
+                        key={`${rowIndex}-${cellIndex}`}
+                        className="px-4 py-3 align-top leading-6 text-slate-700"
+                      >
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      );
+    }
+
+    return (
+      <section
+        key={`block-${index}`}
+        className="rounded-xl border border-blue-100 bg-blue-50 p-4"
+      >
+        <h4 className="text-sm font-bold uppercase text-blue-700">{label}</h4>
+        <p className="mt-3 whitespace-pre-line text-sm leading-7 text-slate-700">
+          {body}
+        </p>
+      </section>
+    );
+  }
+
+  const [heading, ...rest] = section.split("\n");
+
+  return (
+    <section key={`section-${index}`} className="space-y-2">
+      <h3 className="font-bold text-slate-900">{heading}</h3>
+      {rest.length > 0 && (
+        <p className="whitespace-pre-line text-sm leading-7 text-slate-700">
+          {rest.join("\n")}
+        </p>
+      )}
+    </section>
+  );
+}
+
 export default function ModuleBuilderPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
@@ -119,6 +216,7 @@ export default function ModuleBuilderPage() {
   const [selectedCompetencyCode, setSelectedCompetencyCode] = useState("C01");
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [mode, setMode] = useState<"builder" | "document">("builder");
+  const [builderView, setBuilderView] = useState<"edit" | "preview">("edit");
   const [draftContent, setDraftContent] = useState("");
   const [message, setMessage] = useState("");
   const [activeTool, setActiveTool] = useState("");
@@ -275,6 +373,7 @@ export default function ModuleBuilderPage() {
       }
 
       setMode("builder");
+      setBuilderView("edit");
       setSelectedEditorText("");
       setMessage(`${action} selesai. Semak dan edit kandungan sebelum Document Mode.`);
     } catch (err) {
@@ -356,6 +455,7 @@ export default function ModuleBuilderPage() {
     setDraftContent(nextContent);
     setInsertResult("");
     setMode("builder");
+    setBuilderView("preview");
     setMessage(`${getInsertLabel(insertType)} telah dimasukkan di hujung huraian.`);
 
     window.setTimeout(() => {
@@ -431,6 +531,9 @@ export default function ModuleBuilderPage() {
 
   const selectedTrade = trades.find((trade) => trade.id === selectedTradeId);
   const documentSections = draftContent.split(/\n\n+/).filter(Boolean);
+  const renderedSections = documentSections.map((section, index) =>
+    renderContentBlock(section, index),
+  );
 
   return (
     <AppShell>
@@ -616,13 +719,41 @@ export default function ModuleBuilderPage() {
             {mode === "builder" ? (
               <div className="mt-6 space-y-4">
                 <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
-                  <p className="text-xs font-bold uppercase text-blue-700">
-                    Editing Tools
-                  </p>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Highlight teks dalam kotak huraian, kemudian pilih tindakan
-                    yang sesuai.
-                  </p>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase text-blue-700">
+                        Editing Tools
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Highlight teks dalam kotak huraian, kemudian pilih
+                        tindakan yang sesuai.
+                      </p>
+                    </div>
+                    <div className="flex rounded-xl bg-white p-1 shadow-sm">
+                      <button
+                        type="button"
+                        onClick={() => setBuilderView("edit")}
+                        className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                          builderView === "edit"
+                            ? "bg-blue-600 text-white"
+                            : "text-slate-600"
+                        }`}
+                      >
+                        Edit Teks
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBuilderView("preview")}
+                        className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                          builderView === "preview"
+                            ? "bg-blue-600 text-white"
+                            : "text-slate-600"
+                        }`}
+                      >
+                        Preview Modul
+                      </button>
+                    </div>
+                  </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {[
                       "Tambah Huraian",
@@ -646,7 +777,7 @@ export default function ModuleBuilderPage() {
                   </div>
                 </div>
 
-                {selectedEditorText && (
+                {builderView === "edit" && selectedEditorText && (
                   <div className="sticky top-3 z-10 rounded-2xl border border-slate-300 bg-white p-4 shadow-lg">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -681,30 +812,42 @@ export default function ModuleBuilderPage() {
                   </div>
                 )}
 
-                <textarea
-                  ref={editorRef}
-                  value={draftContent}
-                  onChange={(event) => setDraftContent(event.target.value)}
-                  onSelect={refreshSelectedEditorText}
-                  onKeyUp={refreshSelectedEditorText}
-                  onMouseUp={refreshSelectedEditorText}
-                  className="min-h-[560px] w-full rounded-2xl border border-blue-300 bg-white p-5 font-serif text-sm leading-7 text-slate-900 outline-none focus:border-blue-600"
-                  placeholder={[
-                    "Tajuk:",
-                    "",
-                    "Objektif:",
-                    "",
-                    "Penerangan:",
-                    "",
-                    "1) Tajuk diambil daripada mapping",
-                    "1.1 Sub tajuk diambil daripada mapping",
-                    "1.2 Isi penting",
-                    "",
-                    "Rujukan:",
-                    "Latihan:",
-                    "Skema Jawapan:",
-                  ].join("\n")}
-                />
+                {builderView === "edit" ? (
+                  <textarea
+                    ref={editorRef}
+                    value={draftContent}
+                    onChange={(event) => setDraftContent(event.target.value)}
+                    onSelect={refreshSelectedEditorText}
+                    onKeyUp={refreshSelectedEditorText}
+                    onMouseUp={refreshSelectedEditorText}
+                    className="min-h-[560px] w-full rounded-2xl border border-blue-300 bg-white p-5 font-serif text-sm leading-7 text-slate-900 outline-none focus:border-blue-600"
+                    placeholder={[
+                      "Tajuk",
+                      "",
+                      "Objektif Pembelajaran",
+                      "",
+                      "Penerangan Modul",
+                      "",
+                      "1. Tajuk diambil daripada mapping",
+                      "1.1 Sub tajuk diambil daripada mapping",
+                      "1.2 Isi penting",
+                      "",
+                      "Rujukan",
+                      "Latihan",
+                      "Skema Jawapan",
+                    ].join("\n")}
+                  />
+                ) : (
+                  <div className="min-h-[560px] space-y-6 rounded-2xl border border-slate-200 bg-white p-6 font-serif">
+                    {renderedSections.length === 0 ? (
+                      <p className="text-sm text-slate-500">
+                        Jana atau tulis huraian di Edit Teks dahulu.
+                      </p>
+                    ) : (
+                      renderedSections
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="mt-6 bg-slate-100 p-6">
@@ -727,17 +870,7 @@ export default function ModuleBuilderPage() {
                         Jana atau tulis huraian di Builder Mode dahulu.
                       </p>
                     ) : (
-                      documentSections.map((section, index) => {
-                        const [heading, ...rest] = section.split("\n");
-                        return (
-                          <section key={`${heading}-${index}`}>
-                            <h3 className="font-bold">{heading}</h3>
-                            <p className="mt-2 whitespace-pre-line">
-                              {rest.join("\n")}
-                            </p>
-                          </section>
-                        );
-                      })
+                      renderedSections
                     )}
                   </div>
                 </article>
