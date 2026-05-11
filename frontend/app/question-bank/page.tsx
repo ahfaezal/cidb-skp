@@ -162,6 +162,30 @@ function toList(value?: string[] | string) {
   return Array.isArray(value) ? value : [value];
 }
 
+function getGenerationErrorMessage(payload: unknown) {
+  const data = payload as { detail?: unknown; error?: unknown };
+  const detail = data?.detail ?? data?.error;
+
+  if (typeof detail === "string") {
+    try {
+      const parsed = JSON.parse(detail) as {
+        error?: { message?: string };
+        message?: string;
+      };
+
+      return parsed.error?.message || parsed.message || detail;
+    } catch {
+      return detail;
+    }
+  }
+
+  if (detail) {
+    return JSON.stringify(detail);
+  }
+
+  return "AI gagal menjana soalan.";
+}
+
 export default function QuestionBankPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -296,7 +320,7 @@ export default function QuestionBankPage() {
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        throw new Error(payload?.detail || payload?.error || "AI gagal menjana soalan.");
+        throw new Error(getGenerationErrorMessage(payload));
       }
 
       const payload = (await response.json()) as {

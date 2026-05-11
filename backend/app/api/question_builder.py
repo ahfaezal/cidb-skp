@@ -102,11 +102,12 @@ async def build_file_content(files: List[UploadFile]):
             continue
 
         if extension == "pdf":
+            encoded_pdf = base64.b64encode(file_bytes).decode("utf-8")
             content.append(
                 {
                     "type": "input_file",
                     "filename": filename,
-                    "file_data": base64.b64encode(file_bytes).decode("utf-8"),
+                    "file_data": f"data:application/pdf;base64,{encoded_pdf}",
                 }
             )
             continue
