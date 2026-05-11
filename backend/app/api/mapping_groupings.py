@@ -1,5 +1,5 @@
 import json
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -29,6 +29,26 @@ def get_db():
         db.close()
 
 
+def _trim_text(value: Optional[str], max_length: int) -> Optional[str]:
+    if value is None:
+        return None
+
+    cleaned = value.strip()
+    if len(cleaned) <= max_length:
+        return cleaned
+
+    return cleaned[: max_length - 1].rstrip() + "..."
+
+
+def _normalize_grouping_payload(data: dict) -> dict:
+    normalized = data.copy()
+    normalized["source_code"] = _trim_text(normalized.get("source_code"), 50)
+    normalized["source_title"] = _trim_text(normalized.get("source_title"), 255)
+    normalized["module_title"] = _trim_text(normalized.get("module_title"), 255)
+    normalized["status"] = _trim_text(normalized.get("status"), 50) or "Saved"
+    return normalized
+
+
 @router.get("/trade/{trade_id}", response_model=List[MappingGroupingResponse])
 def get_groupings_by_trade(trade_id: int, db: Session = Depends(get_db)):
     return (
@@ -41,7 +61,7 @@ def get_groupings_by_trade(trade_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=MappingGroupingResponse)
 def create_grouping(data: MappingGroupingCreate, db: Session = Depends(get_db)):
-    grouping = MappingGrouping(**data.model_dump())
+    grouping = MappingGrouping(**_normalize_grouping_payload(data.model_dump()))
 
     db.add(grouping)
     db.commit()
@@ -61,7 +81,9 @@ def update_grouping(
     if not grouping:
         raise HTTPException(status_code=404, detail="Mapping grouping not found")
 
-    for key, value in data.model_dump(exclude_unset=True).items():
+    updates = _normalize_grouping_payload(data.model_dump(exclude_unset=True))
+
+    for key, value in updates.items():
         setattr(grouping, key, value)
 
     db.commit()

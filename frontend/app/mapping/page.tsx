@@ -141,6 +141,25 @@ type GroupingPayload = {
   blocks: GeneratedBlock[];
 };
 
+function limitText(value: string | undefined | null, fallback: string, maxLength: number) {
+  const cleaned = (value || fallback).trim();
+  if (cleaned.length <= maxLength) return cleaned;
+  return `${cleaned.slice(0, maxLength - 1).trim()}...`;
+}
+
+function getAxiosErrorMessage(err: unknown, fallback: string) {
+  if (axios.isAxiosError(err)) {
+    const detail = err.response?.data?.detail;
+
+    if (typeof detail === "string") return detail;
+    if (detail) return JSON.stringify(detail);
+    if (err.response?.statusText) return err.response.statusText;
+    if (err.message) return err.message;
+  }
+
+  return fallback;
+}
+
 function getTradeLabel(trade: Trade) {
   return `${trade.code} - ${trade.title}`;
 }
@@ -912,32 +931,41 @@ export default function MappingPage() {
       .join("\n\n");
 
     try {
+      const sourceCode = isAdditionalMode
+        ? "TAMBAHAN"
+        : selectedCmcs?.code || String(selectedCmcsId);
+      const sourceTitle = isAdditionalMode
+        ? "Additional Related Knowledge"
+        : selectedCmcs?.title || "CMCS";
+      const moduleTitle =
+        currentGroupingPayload[0]?.title ||
+        aiDraft.draft_module_title ||
+        `${selectedTrade?.code || "Tred"} Mapping`;
       const groupingPayload = {
         trade_id: selectedTradeId,
         cmcs_id: isAdditionalMode ? null : selectedCmcsId,
-        source_code: isAdditionalMode
-          ? "TAMBAHAN"
-          : selectedCmcs?.code || String(selectedCmcsId),
-        source_title: isAdditionalMode
-          ? "Additional Related Knowledge"
-          : selectedCmcs?.title || "CMCS",
-        module_title: aiDraft.draft_module_title || currentGroupingPayload[0]?.title,
+        source_code: limitText(sourceCode, "CMCS", 50),
+        source_title: limitText(sourceTitle, "CMCS", 255),
+        module_title: limitText(moduleTitle, "Mapping Grouping", 255),
         module_objective: aiDraft.draft_objective,
         groups_json: JSON.stringify(currentGroupingPayload),
         status: "Saved",
       };
 
+      let savedGroupingId = editingGroupingId;
       if (editingGroupingId) {
-        await axios.put(
+        const savedResponse = await axios.put(
           `${API_BASE_URL}/mapping-groupings/${editingGroupingId}`,
           groupingPayload,
         );
+        savedGroupingId = savedResponse.data.id;
       } else {
         const savedResponse = await axios.post(
           `${API_BASE_URL}/mapping-groupings/`,
           groupingPayload,
         );
-        setEditingGroupingId(savedResponse.data.id);
+        savedGroupingId = savedResponse.data.id;
+        setEditingGroupingId(savedGroupingId);
       }
 
       try {
@@ -968,7 +996,6 @@ export default function MappingPage() {
         // Mapping may already exist; persisted grouping remains the source of truth.
       }
 
-      setWorkspaceMessage("Mapping dan grouping berjaya disimpan.");
       setSavedMatrixRows((current) => ({
         ...current,
         [selectedCmcs?.code || String(selectedCmcsId)]: true,
@@ -978,10 +1005,27 @@ export default function MappingPage() {
         `${API_BASE_URL}/trade-cmcs-mappings/trade/${selectedTradeId}`,
       );
       setMappings(mappingResponse.data);
-      await refreshSavedGroupings(selectedTradeId);
+      const groupingResponse = await axios.get(
+        `${API_BASE_URL}/mapping-groupings/trade/${selectedTradeId}`,
+      );
+      setSavedGroupings(groupingResponse.data);
+
+      const savedCount = groupingResponse.data.length;
+      const isVisible = groupingResponse.data.some(
+        (grouping: SavedGrouping) => grouping.id === savedGroupingId,
+      );
+
+      setWorkspaceMessage(
+        isVisible
+          ? `Mapping dan grouping berjaya disimpan. ${savedCount} grouping tersimpan untuk tred ini.`
+          : "Save dihantar, tetapi rekod belum muncul semula daripada database. Cuba refresh atau semak deploy backend.",
+      );
     } catch (err) {
       setWorkspaceMessage(
-        "Save gagal. Mapping mungkin sudah wujud untuk CMCS ini.",
+        `Save gagal: ${getAxiosErrorMessage(
+          err,
+          "Mapping mungkin sudah wujud atau payload tidak diterima backend.",
+        )}`,
       );
       console.error(err);
     } finally {
