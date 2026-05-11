@@ -6,10 +6,22 @@ type QuestionBuilderPayload = {
   objectiveCount: number;
   subjectiveCount: number;
   skillCategories: string[];
-  difficultyDistribution: Record<string, number>;
+  difficultyLevels: string[];
   generateAnswerScheme: boolean;
   generateRubric: boolean;
 };
+
+const requiredSkillCategories = [
+  "Prosedur",
+  "Fakta / Teori",
+  "Sikap / Keselamatan / Persekitaran",
+];
+
+const requiredDifficultyLevels = [
+  "Aras Rendah",
+  "Aras Sederhana",
+  "Aras Tinggi",
+];
 
 type GeneratedQuestion = {
   id: string;
@@ -39,8 +51,8 @@ Return valid JSON only with this shape:
     {
       "id": "string",
       "type": "Objektif or Subjektif",
-      "difficulty": "Rendah or Sederhana or Tinggi",
-      "skillCategory": "Prosedur or Fakta / Teori or Sikap or Keselamatan or Persekitaran",
+      "difficulty": "Aras Rendah or Aras Sederhana or Aras Tinggi",
+      "skillCategory": "Prosedur or Fakta / Teori or Sikap / Keselamatan / Persekitaran",
       "question": "string",
       "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
       "correctAnswer": "A",
@@ -52,7 +64,7 @@ Return valid JSON only with this shape:
   "analysis": {
     "detectedTopics": ["string"],
     "skillDistribution": {"Prosedur": 40},
-    "difficultyDistribution": {"Rendah": 30, "Sederhana": 50, "Tinggi": 20}
+    "difficultyDistribution": {"Aras Rendah": 34, "Aras Sederhana": 33, "Aras Tinggi": 33}
   }
 }
 
@@ -61,8 +73,25 @@ Rules:
 - Subjective questions must include main answerScheme points.
 - Subjective questions must include rubric when generateRubric is true.
 - Use the requested question type counts.
-- Use the requested skill categories and difficulty distribution.
+- REQUIRED: Every question must use exactly one skillCategory from the selected skillCategories.
+- REQUIRED: Every question must use exactly one difficulty from the selected difficultyLevels.
+- REQUIRED: The generated set must use only the selected skillCategories and selected difficultyLevels.
+- REQUIRED: Treat the user's 7 input groups as mandatory generation parameters:
+  1. uploaded files metadata,
+  2. questionTypes,
+  3. question counts for objectiveCount and subjectiveCount,
+  4. skillCategories,
+  5. difficultyLevels,
+  6. generateAnswerScheme,
+  7. generateRubric.
+- Do not invent other skill categories such as separate Sikap, Keselamatan or Persekitaran. Use the combined category exactly as "Sikap / Keselamatan / Persekitaran".
 - Keep questions practical for construction or rail training if the topic is unclear.
+
+Allowed skill categories:
+${requiredSkillCategories.join(", ")}
+
+Allowed difficulty levels:
+${requiredDifficultyLevels.join(", ")}
 
 Settings:
 ${JSON.stringify(payload, null, 2)}
@@ -106,25 +135,12 @@ function safeParseJson(text: string) {
   }
 }
 
-function pickByDistribution(distribution: Record<string, number>, index: number) {
-  const entries = Object.entries(distribution).filter(([, value]) => value > 0);
-
-  if (entries.length === 0) {
-    return "Sederhana";
+function pickDifficulty(levels: string[], index: number) {
+  if (levels.length === 0) {
+    return "Aras Sederhana";
   }
 
-  const total = entries.reduce((sum, [, value]) => sum + value, 0);
-  const cursor = ((index * 37) % total) + 1;
-  let running = 0;
-
-  for (const [label, value] of entries) {
-    running += value;
-    if (cursor <= running) {
-      return label;
-    }
-  }
-
-  return entries[0][0];
+  return levels[index % levels.length];
 }
 
 function buildFallbackResponse(payload: QuestionBuilderPayload) {
@@ -136,11 +152,12 @@ function buildFallbackResponse(payload: QuestionBuilderPayload) {
   if (payload.questionTypes.includes("Objektif")) {
     for (let index = 0; index < payload.objectiveCount; index += 1) {
       const skill =
-        payload.skillCategories[index % payload.skillCategories.length] || "Keselamatan";
+        payload.skillCategories[index % payload.skillCategories.length] ||
+        "Sikap / Keselamatan / Persekitaran";
       questions.push({
         id: `obj-${index + 1}`,
         type: "Objektif",
-        difficulty: pickByDistribution(payload.difficultyDistribution, index),
+        difficulty: pickDifficulty(payload.difficultyLevels, index),
         skillCategory: skill,
         question: `Apakah tindakan paling sesuai berkaitan ${detectedTopic} bagi kategori ${skill.toLowerCase()}?`,
         options: [
@@ -167,7 +184,7 @@ function buildFallbackResponse(payload: QuestionBuilderPayload) {
       questions.push({
         id: `sub-${index + 1}`,
         type: "Subjektif",
-        difficulty: pickByDistribution(payload.difficultyDistribution, index + 11),
+        difficulty: pickDifficulty(payload.difficultyLevels, index + 11),
         skillCategory: skill,
         question: `Terangkan langkah utama yang perlu diambil untuk memastikan ${detectedTopic} dilaksanakan mengikut keperluan ${skill.toLowerCase()}.`,
         answerScheme: payload.generateAnswerScheme
@@ -224,7 +241,18 @@ function buildFallbackResponse(payload: QuestionBuilderPayload) {
         "Pemeriksaan dan Kawalan Kualiti",
       ],
       skillDistribution,
-      difficultyDistribution: payload.difficultyDistribution,
+      difficultyDistribution: payload.difficultyLevels.reduce<Record<string, number>>(
+        (current, level, index) => ({
+          ...current,
+          [level]:
+            index === payload.difficultyLevels.length - 1
+              ? 100 -
+                Math.round(100 / payload.difficultyLevels.length) *
+                  (payload.difficultyLevels.length - 1)
+              : Math.round(100 / payload.difficultyLevels.length),
+        }),
+        {}
+      ),
     },
   };
 }
@@ -239,14 +267,30 @@ export async function POST(request: Request) {
     );
   }
 
-  const difficultyTotal = Object.values(payload.difficultyDistribution ?? {}).reduce(
-    (sum, value) => sum + Number(value),
-    0
+  const invalidSkills = (payload.skillCategories ?? []).filter(
+    (category) => !requiredSkillCategories.includes(category)
   );
 
-  if (difficultyTotal !== 100) {
+  if (invalidSkills.length > 0 || !payload.skillCategories?.length) {
     return NextResponse.json(
-      { error: "difficultyDistribution total must be 100." },
+      {
+        error:
+          "skillCategories must use Prosedur, Fakta / Teori, or Sikap / Keselamatan / Persekitaran.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const invalidDifficulties = (payload.difficultyLevels ?? []).filter(
+    (level) => !requiredDifficultyLevels.includes(level)
+  );
+
+  if (invalidDifficulties.length > 0 || !payload.difficultyLevels?.length) {
+    return NextResponse.json(
+      {
+        error:
+          "difficultyLevels must use Aras Rendah, Aras Sederhana, or Aras Tinggi.",
+      },
       { status: 400 }
     );
   }

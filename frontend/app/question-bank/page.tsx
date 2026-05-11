@@ -17,13 +17,11 @@ import {
 import { AppShell } from "@/components/layouts/AppShell";
 
 type QuestionType = "Objektif" | "Subjektif";
-type Difficulty = "Rendah" | "Sederhana" | "Tinggi";
+type Difficulty = "Aras Rendah" | "Aras Sederhana" | "Aras Tinggi";
 type SkillCategory =
   | "Prosedur"
   | "Fakta / Teori"
-  | "Sikap"
-  | "Keselamatan"
-  | "Persekitaran";
+  | "Sikap / Keselamatan / Persekitaran";
 
 type UploadedFile = {
   id: string;
@@ -62,25 +60,25 @@ const questionTypeOptions: QuestionType[] = ["Objektif", "Subjektif"];
 const skillOptions: SkillCategory[] = [
   "Prosedur",
   "Fakta / Teori",
-  "Sikap",
-  "Keselamatan",
-  "Persekitaran",
+  "Sikap / Keselamatan / Persekitaran",
 ];
-const difficultyOptions: Difficulty[] = ["Rendah", "Sederhana", "Tinggi"];
+const difficultyOptions: Array<{ value: Difficulty; label: string }> = [
+  { value: "Aras Rendah", label: "Aras Rendah" },
+  { value: "Aras Sederhana", label: "Aras Sederhana" },
+  { value: "Aras Tinggi", label: "Aras Tinggi" },
+];
 
 const initialAnalysis: Analysis = {
   detectedTopics: [],
   skillDistribution: {
     Prosedur: 0,
     "Fakta / Teori": 0,
-    Sikap: 0,
-    Keselamatan: 0,
-    Persekitaran: 0,
+    "Sikap / Keselamatan / Persekitaran": 0,
   },
   difficultyDistribution: {
-    Rendah: 30,
-    Sederhana: 50,
-    Tinggi: 20,
+    "Aras Rendah": 0,
+    "Aras Sederhana": 0,
+    "Aras Tinggi": 0,
   },
 };
 
@@ -172,11 +170,9 @@ export default function QuestionBankPage() {
   const [objectiveCount, setObjectiveCount] = useState(20);
   const [subjectiveCount, setSubjectiveCount] = useState(5);
   const [skillCategories, setSkillCategories] = useState<SkillCategory[]>(skillOptions);
-  const [difficultyDistribution, setDifficultyDistribution] = useState<Record<Difficulty, number>>({
-    Rendah: 30,
-    Sederhana: 50,
-    Tinggi: 20,
-  });
+  const [difficultyLevels, setDifficultyLevels] = useState<Difficulty[]>(
+    difficultyOptions.map(({ value }) => value)
+  );
   const [generateAnswerScheme, setGenerateAnswerScheme] = useState(true);
   const [generateRubric, setGenerateRubric] = useState(true);
   const [questions, setQuestions] = useState<GeneratedQuestion[]>([]);
@@ -189,10 +185,6 @@ export default function QuestionBankPage() {
   const totalQuestions =
     (questionTypes.includes("Objektif") ? objectiveCount : 0) +
     (questionTypes.includes("Subjektif") ? subjectiveCount : 0);
-  const difficultyTotal = Object.values(difficultyDistribution).reduce(
-    (total, value) => total + value,
-    0
-  );
   const filteredQuestions = useMemo(() => {
     return questions.filter((item) => {
       const matchesFilter = activeFilter === "Semua" || item.type === activeFilter;
@@ -241,11 +233,12 @@ export default function QuestionBankPage() {
     );
   }
 
-  function updateDifficulty(level: Difficulty, value: number) {
-    setDifficultyDistribution((current) => ({
-      ...current,
-      [level]: Math.max(0, Math.min(100, value)),
-    }));
+  function toggleDifficulty(level: Difficulty) {
+    setDifficultyLevels((current) =>
+      current.includes(level)
+        ? current.filter((item) => item !== level)
+        : [...current, level]
+    );
   }
 
   async function generateQuestions() {
@@ -261,8 +254,8 @@ export default function QuestionBankPage() {
       return;
     }
 
-    if (difficultyTotal !== 100) {
-      setError("Jumlah peratus aras soalan mesti tepat 100%.");
+    if (difficultyLevels.length === 0) {
+      setError("Pilih sekurang-kurangnya satu aras soalan.");
       return;
     }
 
@@ -280,7 +273,7 @@ export default function QuestionBankPage() {
           objectiveCount,
           subjectiveCount,
           skillCategories,
-          difficultyDistribution,
+          difficultyLevels,
           generateAnswerScheme,
           generateRubric,
         }),
@@ -496,38 +489,17 @@ export default function QuestionBankPage() {
 
             <div className="border-b border-slate-200 p-4">
               <StepTitle no={5} title="Aras Soalan" />
-              <div className="space-y-3 text-sm">
-                {difficultyOptions.map((level) => (
-                  <div key={level} className="grid grid-cols-[78px_1fr_58px] items-center gap-2">
-                    <span className="text-slate-600">{level}</span>
+              <div className="grid gap-3 text-sm text-slate-700">
+                {difficultyOptions.map(({ value, label }) => (
+                  <label key={value} className="flex items-center gap-2">
                     <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={difficultyDistribution[level]}
-                      onChange={(event) => updateDifficulty(level, Number(event.target.value))}
-                      className="w-full accent-blue-600"
+                      type="checkbox"
+                      checked={difficultyLevels.includes(value)}
+                      onChange={() => toggleDifficulty(value)}
                     />
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={difficultyDistribution[level]}
-                      onChange={(event) => updateDifficulty(level, Number(event.target.value))}
-                      className="rounded-lg border border-slate-200 px-2 py-1 text-right"
-                    />
-                  </div>
+                    {label}
+                  </label>
                 ))}
-                <div
-                  className={`rounded-xl px-3 py-2 text-xs font-semibold ${
-                    difficultyTotal === 100
-                      ? "bg-green-50 text-green-700"
-                      : "bg-red-50 text-red-700"
-                  }`}
-                >
-                  Jumlah peratus: {difficultyTotal}%{" "}
-                  {difficultyTotal !== 100 && "(mesti 100%)"}
-                </div>
               </div>
             </div>
 
@@ -637,14 +609,14 @@ export default function QuestionBankPage() {
                         <Badge tone="slate">{item.type}</Badge>
                         <Badge
                           tone={
-                            item.difficulty === "Tinggi"
+                            item.difficulty === "Aras Tinggi"
                               ? "red"
-                              : item.difficulty === "Sederhana"
+                              : item.difficulty === "Aras Sederhana"
                                 ? "orange"
                                 : "green"
                           }
                         >
-                          Aras: {item.difficulty}
+                          {item.difficulty}
                         </Badge>
                         <Badge tone="purple">Keterampilan: {item.skillCategory}</Badge>
                         {item.locked && <Badge tone="blue">Locked</Badge>}
@@ -800,23 +772,29 @@ export default function QuestionBankPage() {
               <div className="mt-5 border-t border-slate-200 pt-4">
                 <p className="text-sm font-bold text-slate-800">Taburan Aras Soalan</p>
                 <div className="mt-4 space-y-3 text-sm">
-                  {difficultyOptions.map((label) => {
+                  {difficultyOptions.map(({ value: label, label: displayLabel }) => {
                     const value =
-                      analysis.difficultyDistribution[label] ?? difficultyDistribution[label];
+                      analysis.difficultyDistribution[label] ??
+                      (difficultyLevels.includes(label) ? 1 : 0);
                     const color =
-                      label === "Rendah"
+                      label === "Aras Rendah"
                         ? "bg-green-500"
-                        : label === "Sederhana"
+                        : label === "Aras Sederhana"
                           ? "bg-orange-500"
                           : "bg-red-500";
 
                     return (
-                      <div key={label} className="grid grid-cols-[80px_1fr_45px] items-center gap-2">
-                        <span className="text-slate-600">{label}</span>
+                      <div key={label} className="grid grid-cols-[112px_1fr_45px] items-center gap-2">
+                        <span className="text-slate-600">{displayLabel}</span>
                         <div className="h-2 rounded-full bg-slate-100">
-                          <div className={`h-2 rounded-full ${color}`} style={{ width: `${value}%` }} />
+                          <div
+                            className={`h-2 rounded-full ${color}`}
+                            style={{ width: `${Math.min(100, value)}%` }}
+                          />
                         </div>
-                        <span className="text-xs font-semibold text-slate-600">{value}%</span>
+                        <span className="text-xs font-semibold text-slate-600">
+                          {value > 0 ? `${value}%` : "-"}
+                        </span>
                       </div>
                     );
                   })}
@@ -828,15 +806,19 @@ export default function QuestionBankPage() {
               <h2 className="text-base font-bold text-slate-900">Ringkasan Tetapan</h2>
               <div className="mt-4 space-y-3 border-t border-slate-200 pt-4 text-sm">
                 {[
+                  ["Fail Nota", uploadedFiles.length ? `${uploadedFiles.length} fail` : "Belum dipilih"],
+                  ["Jenis Soalan", questionTypes.join(", ") || "-"],
                   ["Jumlah Soalan", String(totalQuestions)],
                   ["Objektif", questionTypes.includes("Objektif") ? String(objectiveCount) : "0"],
                   ["Subjektif", questionTypes.includes("Subjektif") ? String(subjectiveCount) : "0"],
+                  ["Keterampilan", skillCategories.join(", ") || "-"],
+                  ["Aras Soalan", difficultyLevels.join(", ") || "-"],
                   ["Skema Jawapan", generateAnswerScheme ? "Diaktifkan" : "Dimatikan"],
                   ["Rubrik Jawapan", generateRubric ? "Diaktifkan" : "Dimatikan"],
                 ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between gap-4">
+                  <div key={label} className="grid grid-cols-[94px_1fr] gap-3">
                     <span className="text-slate-600">{label}</span>
-                    <span className="font-bold text-slate-900">{value}</span>
+                    <span className="text-right font-bold text-slate-900">{value}</span>
                   </div>
                 ))}
               </div>
