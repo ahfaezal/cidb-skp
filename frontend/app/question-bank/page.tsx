@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   Edit3,
@@ -57,6 +57,27 @@ type Analysis = {
   detectedTopics: string[];
   skillDistribution: Record<string, number>;
   difficultyDistribution: Record<string, number>;
+};
+
+type SavedQuestionDraft = {
+  id: number;
+  title: string;
+  ownerRef: string;
+  status: string;
+  settings: {
+    questionTypes?: QuestionType[];
+    objectiveCount?: number;
+    subjectiveCount?: number;
+    skillCategories?: SkillCategory[];
+    difficultyLevels?: Difficulty[];
+    generateAnswerScheme?: boolean;
+    generateRubric?: boolean;
+  };
+  files: Array<{ id?: string; name: string; size: number; type: string }>;
+  questions: GeneratedQuestion[];
+  analysis: Analysis;
+  createdAt: string;
+  updatedAt: string;
 };
 
 const questionTypeOptions: QuestionType[] = ["Objektif", "Subjektif"];
@@ -218,6 +239,8 @@ export default function QuestionBankPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("Builder");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [savedDrafts, setSavedDrafts] = useState<SavedQuestionDraft[]>([]);
+  const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
   const [error, setError] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
 
@@ -235,6 +258,45 @@ export default function QuestionBankPage() {
       return matchesFilter && matchesSearch;
     });
   }, [activeFilter, questions, searchTerm]);
+
+  useEffect(() => {
+    loadSavedDrafts();
+  }, []);
+
+  async function loadSavedDrafts() {
+    setIsLoadingDrafts(true);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/question-builder/drafts?ownerRef=local-user`,
+      );
+
+      if (!response.ok) return;
+
+      setSavedDrafts((await response.json()) as SavedQuestionDraft[]);
+    } finally {
+      setIsLoadingDrafts(false);
+    }
+  }
+
+  function loadDraft(draft: SavedQuestionDraft) {
+    setQuestions(draft.questions);
+    setAnalysis(draft.analysis || initialAnalysis);
+    setQuestionTypes(draft.settings.questionTypes?.length ? draft.settings.questionTypes : questionTypeOptions);
+    setObjectiveCount(draft.settings.objectiveCount ?? 0);
+    setSubjectiveCount(draft.settings.subjectiveCount ?? 0);
+    setSkillCategories(draft.settings.skillCategories?.length ? draft.settings.skillCategories : skillOptions);
+    setDifficultyLevels(
+      draft.settings.difficultyLevels?.length
+        ? draft.settings.difficultyLevels
+        : difficultyOptions.map(({ value }) => value),
+    );
+    setGenerateAnswerScheme(draft.settings.generateAnswerScheme ?? true);
+    setGenerateRubric(draft.settings.generateRubric ?? true);
+    setUploadedFiles([]);
+    setViewMode("Builder");
+    setDraftMessage(`Draf ID ${draft.id} dimuat semula.`);
+  }
 
   function handleFiles(files: FileList | null) {
     if (!files) {
@@ -401,6 +463,7 @@ export default function QuestionBankPage() {
 
       const payload = (await response.json()) as { id: number; message: string };
       setDraftMessage(`${payload.message} ID Draf: ${payload.id}`);
+      await loadSavedDrafts();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal simpan draf.");
     } finally {
@@ -1061,6 +1124,43 @@ export default function QuestionBankPage() {
                     <span className="text-right font-bold text-slate-900">{value}</span>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-bold text-slate-900">Draf Tersimpan</h2>
+                <button
+                  type="button"
+                  onClick={loadSavedDrafts}
+                  className="text-xs font-bold text-blue-600"
+                >
+                  Muat Semula
+                </button>
+              </div>
+
+              <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
+                {isLoadingDrafts ? (
+                  <p className="text-sm text-slate-500">Memuat draf...</p>
+                ) : savedDrafts.length === 0 ? (
+                  <p className="text-sm text-slate-500">Belum ada draf tersimpan.</p>
+                ) : (
+                  savedDrafts.slice(0, 5).map((draft) => (
+                    <button
+                      key={draft.id}
+                      type="button"
+                      onClick={() => loadDraft(draft)}
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 p-3 text-left hover:border-blue-200 hover:bg-blue-50"
+                    >
+                      <p className="text-sm font-bold text-slate-900">
+                        {draft.title}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        ID {draft.id} - {draft.questions.length} soalan - {draft.status}
+                      </p>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
 

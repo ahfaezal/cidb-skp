@@ -54,6 +54,19 @@ class QuestionBuilderDraftCreate(BaseModel):
     analysis: dict = Field(default_factory=dict)
 
 
+class QuestionBuilderDraftResponse(BaseModel):
+    id: int
+    title: str
+    ownerRef: str
+    status: str
+    settings: dict
+    files: List[dict]
+    questions: List[dict]
+    analysis: dict
+    createdAt: str
+    updatedAt: str
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -376,6 +389,50 @@ async def generate_questions(
         ) from exc
 
     return enforce_generation_settings(result, parsed_settings)
+
+
+def draft_to_response(draft: QuestionBuilderDraft):
+    return QuestionBuilderDraftResponse(
+        id=draft.id,
+        title=draft.title,
+        ownerRef=draft.owner_ref,
+        status=draft.status,
+        settings=json.loads(draft.settings_json),
+        files=json.loads(draft.files_json),
+        questions=json.loads(draft.questions_json),
+        analysis=json.loads(draft.analysis_json),
+        createdAt=draft.created_at.isoformat() if draft.created_at else "",
+        updatedAt=draft.updated_at.isoformat() if draft.updated_at else "",
+    )
+
+
+@router.get("/drafts", response_model=List[QuestionBuilderDraftResponse])
+def get_question_builder_drafts(
+    ownerRef: str = "local-user",
+    db: Session = Depends(get_db),
+):
+    drafts = (
+        db.query(QuestionBuilderDraft)
+        .filter(QuestionBuilderDraft.owner_ref == ownerRef)
+        .order_by(QuestionBuilderDraft.updated_at.desc(), QuestionBuilderDraft.id.desc())
+        .all()
+    )
+
+    return [draft_to_response(draft) for draft in drafts]
+
+
+@router.get("/drafts/{draft_id}", response_model=QuestionBuilderDraftResponse)
+def get_question_builder_draft(draft_id: int, db: Session = Depends(get_db)):
+    draft = (
+        db.query(QuestionBuilderDraft)
+        .filter(QuestionBuilderDraft.id == draft_id)
+        .first()
+    )
+
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draf soalan tidak ditemui.")
+
+    return draft_to_response(draft)
 
 
 @router.post("/drafts")
