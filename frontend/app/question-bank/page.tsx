@@ -28,6 +28,7 @@ type UploadedFile = {
   name: string;
   size: number;
   type: string;
+  file: File;
 };
 
 type RubricItem = {
@@ -215,6 +216,7 @@ export default function QuestionBankPage() {
         name: file.name,
         size: file.size,
         type: file.type || file.name.split(".").pop()?.toUpperCase() || "FILE",
+        file,
       })),
     ]);
   }
@@ -262,13 +264,16 @@ export default function QuestionBankPage() {
     setIsGenerating(true);
 
     try {
-      const response = await fetch("/api/question-builder/generate", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          files: uploadedFiles,
+      const formData = new FormData();
+      formData.append(
+        "settings",
+        JSON.stringify({
+          files: uploadedFiles.map(({ id, name, size, type }) => ({
+            id,
+            name,
+            size,
+            type,
+          })),
           questionTypes,
           objectiveCount,
           subjectiveCount,
@@ -276,7 +281,16 @@ export default function QuestionBankPage() {
           difficultyLevels,
           generateAnswerScheme,
           generateRubric,
-        }),
+        })
+      );
+
+      uploadedFiles.forEach((item) => {
+        formData.append("files", item.file, item.name);
+      });
+
+      const response = await fetch("/api/question-builder/generate", {
+        method: "POST",
+        body: formData,
       });
 
       if (!response.ok) {

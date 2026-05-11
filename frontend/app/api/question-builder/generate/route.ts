@@ -11,6 +11,17 @@ type QuestionBuilderPayload = {
   generateRubric: boolean;
 };
 
+type OpenAIContent =
+  | {
+      type: "input_text";
+      text: string;
+    }
+  | {
+      type: "input_file";
+      filename: string;
+      file_data: string;
+    };
+
 const requiredSkillCategories = [
   "Prosedur",
   "Fakta / Teori",
@@ -23,27 +34,12 @@ const requiredDifficultyLevels = [
   "Aras Tinggi",
 ];
 
-type GeneratedQuestion = {
-  id: string;
-  type: "Objektif" | "Subjektif";
-  difficulty: string;
-  skillCategory: string;
-  question: string;
-  options?: string[];
-  correctAnswer?: string;
-  answerScheme?: string[] | string;
-  rubric?: Array<{
-    criteria: string;
-    marks: number;
-    description: string;
-  }>;
-  rationale?: string;
-};
-
-function buildPrompt(payload: QuestionBuilderPayload) {
+function buildPrompt(payload: QuestionBuilderPayload, uploadedFileNames: string[]) {
   return `
 You are an AI question builder for SKP-CIDB competency-based training in Malaysia.
-Write in Malay. Generate assessment questions from uploaded note metadata and settings.
+Write in Malay. Generate assessment questions by reading and using the uploaded note files attached in this request.
+Do not generate generic template questions. Every question must be grounded in the uploaded notes.
+If the uploaded notes do not contain enough information, return a clear error JSON instead of inventing content.
 
 Return valid JSON only with this shape:
 {
@@ -95,6 +91,9 @@ ${requiredDifficultyLevels.join(", ")}
 
 Settings:
 ${JSON.stringify(payload, null, 2)}
+
+Uploaded files to use as source material:
+${uploadedFileNames.length ? uploadedFileNames.map((name) => `- ${name}`).join("\n") : "- None"}
 `;
 }
 
@@ -135,130 +134,69 @@ function safeParseJson(text: string) {
   }
 }
 
-function pickDifficulty(levels: string[], index: number) {
-  if (levels.length === 0) {
-    return "Aras Sederhana";
+async function parseRequest(request: Request) {
+  const contentType = request.headers.get("content-type") || "";
+
+  if (!contentType.includes("multipart/form-data")) {
+    return {
+      payload: (await request.json()) as QuestionBuilderPayload,
+      uploadedFiles: [] as File[],
+    };
   }
 
-  return levels[index % levels.length];
-}
+  const formData = await request.formData();
+  const settings = formData.get("settings");
 
-function buildFallbackResponse(payload: QuestionBuilderPayload) {
-  const detectedTopic =
-    payload.files[0]?.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ") ||
-    "Keselamatan dan Prosedur Kerja";
-  const questions: GeneratedQuestion[] = [];
-
-  if (payload.questionTypes.includes("Objektif")) {
-    for (let index = 0; index < payload.objectiveCount; index += 1) {
-      const skill =
-        payload.skillCategories[index % payload.skillCategories.length] ||
-        "Sikap / Keselamatan / Persekitaran";
-      questions.push({
-        id: `obj-${index + 1}`,
-        type: "Objektif",
-        difficulty: pickDifficulty(payload.difficultyLevels, index),
-        skillCategory: skill,
-        question: `Apakah tindakan paling sesuai berkaitan ${detectedTopic} bagi kategori ${skill.toLowerCase()}?`,
-        options: [
-          "A. Mengabaikan pemeriksaan awal",
-          "B. Mematuhi prosedur kerja dan arahan keselamatan",
-          "C. Memulakan kerja tanpa peralatan lengkap",
-          "D. Menyerahkan semua keputusan kepada pembantu",
-        ],
-        correctAnswer: "B",
-        answerScheme: payload.generateAnswerScheme
-          ? ["Jawapan betul ialah B.", "Calon mengenal pasti amalan kerja selamat."]
-          : [],
-        rationale:
-          "Pilihan B menekankan pematuhan prosedur dan keselamatan sebagai asas kerja kompeten.",
-      });
-    }
+  if (typeof settings !== "string") {
+    throw new Error("Missing question builder settings.");
   }
-
-  if (payload.questionTypes.includes("Subjektif")) {
-    for (let index = 0; index < payload.subjectiveCount; index += 1) {
-      const skill =
-        payload.skillCategories[(index + 2) % payload.skillCategories.length] ||
-        "Prosedur";
-      questions.push({
-        id: `sub-${index + 1}`,
-        type: "Subjektif",
-        difficulty: pickDifficulty(payload.difficultyLevels, index + 11),
-        skillCategory: skill,
-        question: `Terangkan langkah utama yang perlu diambil untuk memastikan ${detectedTopic} dilaksanakan mengikut keperluan ${skill.toLowerCase()}.`,
-        answerScheme: payload.generateAnswerScheme
-          ? [
-              "Kenal pasti skop kerja dan risiko utama.",
-              "Sediakan peralatan, bahan dan dokumen rujukan.",
-              "Laksanakan kerja mengikut prosedur dan rekodkan pemeriksaan.",
-            ]
-          : [],
-        rubric: payload.generateRubric
-          ? [
-              {
-                criteria: "Ketepatan isi",
-                marks: 4,
-                description: "Isi selari dengan prosedur dan konteks kerja.",
-              },
-              {
-                criteria: "Urutan langkah",
-                marks: 3,
-                description: "Jawapan menunjukkan turutan kerja yang logik.",
-              },
-              {
-                criteria: "Keselamatan",
-                marks: 3,
-                description: "Risiko dan kawalan keselamatan dinyatakan dengan jelas.",
-              },
-            ]
-          : [],
-        rationale:
-          "Soalan subjektif ini menguji kefahaman proses, justifikasi tindakan dan aplikasi amali.",
-      });
-    }
-  }
-
-  const skillShare = Math.round(100 / Math.max(1, payload.skillCategories.length));
-  const skillDistribution = payload.skillCategories.reduce<Record<string, number>>(
-    (current, category, index) => ({
-      ...current,
-      [category]:
-        index === payload.skillCategories.length - 1
-          ? 100 - skillShare * (payload.skillCategories.length - 1)
-          : skillShare,
-    }),
-    {}
-  );
 
   return {
-    questions,
-    analysis: {
-      detectedTopics: [
-        detectedTopic,
-        "Prosedur Kerja",
-        "Keselamatan Kerja",
-        "Pemeriksaan dan Kawalan Kualiti",
-      ],
-      skillDistribution,
-      difficultyDistribution: payload.difficultyLevels.reduce<Record<string, number>>(
-        (current, level, index) => ({
-          ...current,
-          [level]:
-            index === payload.difficultyLevels.length - 1
-              ? 100 -
-                Math.round(100 / payload.difficultyLevels.length) *
-                  (payload.difficultyLevels.length - 1)
-              : Math.round(100 / payload.difficultyLevels.length),
-        }),
-        {}
-      ),
-    },
+    payload: JSON.parse(settings) as QuestionBuilderPayload,
+    uploadedFiles: formData
+      .getAll("files")
+      .filter((item): item is File => item instanceof File && item.size > 0),
   };
 }
 
+async function buildFileContent(files: File[]) {
+  const content: OpenAIContent[] = [];
+
+  for (const file of files) {
+    const extension = file.name.split(".").pop()?.toLowerCase();
+
+    if (extension === "txt") {
+      content.push({
+        type: "input_text",
+        text: `Uploaded note file: ${file.name}\n\n${await file.text()}`,
+      });
+      continue;
+    }
+
+    content.push({
+      type: "input_file",
+      filename: file.name,
+      file_data: Buffer.from(await file.arrayBuffer()).toString("base64"),
+    });
+  }
+
+  return content;
+}
+
 export async function POST(request: Request) {
-  const payload = (await request.json()) as QuestionBuilderPayload;
+  let payload: QuestionBuilderPayload;
+  let uploadedFiles: File[];
+
+  try {
+    const parsed = await parseRequest(request);
+    payload = parsed.payload;
+    uploadedFiles = parsed.uploadedFiles;
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid question builder request." },
+      { status: 400 }
+    );
+  }
 
   if (!payload.questionTypes?.length) {
     return NextResponse.json(
@@ -295,11 +233,26 @@ export async function POST(request: Request) {
     );
   }
 
+  if (uploadedFiles.length === 0) {
+    return NextResponse.json(
+      { error: "Sila upload sekurang-kurangnya satu fail nota untuk AI jana soalan." },
+      { status: 400 }
+    );
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
 
   if (!apiKey) {
-    return NextResponse.json(buildFallbackResponse(payload));
+    return NextResponse.json(
+      {
+        error:
+          "OPENAI_API_KEY belum dikonfigurasi. AI sebenar tidak boleh jana soalan tanpa API key.",
+      },
+      { status: 503 }
+    );
   }
+
+  const fileContent = await buildFileContent(uploadedFiles);
 
   const aiResponse = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -309,7 +262,21 @@ export async function POST(request: Request) {
     },
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL || "gpt-5.2",
-      input: buildPrompt(payload),
+      input: [
+        {
+          role: "user",
+          content: [
+            ...fileContent,
+            {
+              type: "input_text",
+              text: buildPrompt(
+                payload,
+                uploadedFiles.map((file) => file.name)
+              ),
+            },
+          ],
+        },
+      ],
     }),
   });
 
