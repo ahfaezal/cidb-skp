@@ -7,6 +7,7 @@ from app.api.assessment_questions import router as assessment_questions_router
 from app.api.cmcs import router as cmcs_router
 from app.api.learning_packages import router as learning_packages_router
 from app.api.mapping_groupings import router as mapping_groupings_router
+from app.api.module_builder_ai import router as module_builder_ai_router
 from app.api.module_content_blocks import router as module_content_blocks_router
 from app.api.review_records import router as review_records_router
 from app.api.skp_modules import router as skp_modules_router
@@ -107,6 +108,7 @@ app.include_router(workflow_assignments_router)
 app.include_router(review_records_router)
 app.include_router(module_content_blocks_router)
 app.include_router(mapping_groupings_router)
+app.include_router(module_builder_ai_router)
 app.include_router(skp_modules_router)
 app.include_router(learning_packages_router)
 app.include_router(assessment_questions_router)

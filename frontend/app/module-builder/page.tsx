@@ -1,7 +1,7 @@
 "use client";
 
 import axios from "axios";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AppShell } from "@/components/layouts/AppShell";
 import { API_BASE_URL } from "@/src/lib/api";
 
@@ -107,7 +107,9 @@ export default function ModuleBuilderPage() {
   const [mode, setMode] = useState<"builder" | "document">("builder");
   const [draftContent, setDraftContent] = useState("");
   const [message, setMessage] = useState("");
+  const [activeTool, setActiveTool] = useState("");
   const [loading, setLoading] = useState(true);
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -181,11 +183,93 @@ export default function ModuleBuilderPage() {
     filteredCandidates[0] ||
     null;
 
+  function getMappingContext(candidate: ModuleCandidate | null) {
+    if (!candidate) return "";
+
+    return candidate.group.blocks
+      .map((block, index) => {
+        const items = block.items
+          .filter(Boolean)
+          .map((item) => `- ${item}`)
+          .join("\n");
+        return `${index + 1}. ${block.title}\nSub tajuk: ${block.subtitle || "-"}\n${items}`;
+      })
+      .join("\n\n");
+  }
+
+  function getSelectedEditorText() {
+    const editor = editorRef.current;
+    if (!editor) return "";
+    return draftContent.slice(editor.selectionStart, editor.selectionEnd).trim();
+  }
+
+  function insertIntoEditor(content: string, replaceSelection = false) {
+    const editor = editorRef.current;
+
+    if (!editor || !replaceSelection) {
+      setDraftContent((current) =>
+        current.trim() ? `${current.trim()}\n\n${content}` : content,
+      );
+      return;
+    }
+
+    const before = draftContent.slice(0, editor.selectionStart);
+    const after = draftContent.slice(editor.selectionEnd);
+    setDraftContent(`${before}${content}${after}`);
+  }
+
+  async function runAITool(action: string) {
+    if (!selectedCandidate) {
+      setMessage("Pilih group modul dahulu.");
+      return;
+    }
+
+    const selectedText = getSelectedEditorText();
+    setActiveTool(action);
+    setMessage(`${action} sedang dijana...`);
+
+    try {
+      const response = await axios.post<{ content: string }>(
+        `${API_BASE_URL}/module-builder-ai/generate`,
+        {
+          action,
+          trade_title: selectedTrade
+            ? `${selectedTrade.code} - ${selectedTrade.title}`
+            : "",
+          competency_code: getCompetencyCode(selectedCandidate.grouping),
+          competency_title: selectedCandidate.grouping.source_title,
+          group_title: selectedCandidate.group.title,
+          group_subtitle: selectedCandidate.group.subtitle,
+          mapping_context: getMappingContext(selectedCandidate),
+          current_content: draftContent,
+          selected_text: selectedText,
+        },
+      );
+
+      if (action === "Jana AI") {
+        setDraftContent(response.data.content);
+      } else {
+        insertIntoEditor(response.data.content, Boolean(selectedText));
+      }
+
+      setMode("builder");
+      setMessage(`${action} selesai. Semak dan edit kandungan sebelum Document Mode.`);
+    } catch (err) {
+      if (action === "Jana AI") {
+        setDraftContent(buildDraftContent(selectedCandidate));
+        setMessage("AI backend gagal, draf asas daripada mapping telah digunakan.");
+      } else {
+        setMessage(`${action} gagal. Cuba highlight teks yang lebih khusus atau semak backend AI.`);
+      }
+      console.error(err);
+    } finally {
+      setActiveTool("");
+    }
+  }
+
   function generateDraft() {
-    const content = buildDraftContent(selectedCandidate);
-    setDraftContent(content);
+    runAITool("Jana AI");
     setMode("builder");
-    setMessage("Huraian modul dijana daripada hasil mapping. Semak dan edit sebelum Document Mode.");
   }
 
   const selectedTrade = trades.find((trade) => trade.id === selectedTradeId);
@@ -358,10 +442,10 @@ export default function ModuleBuilderPage() {
                 <button
                   type="button"
                   onClick={generateDraft}
-                  disabled={!selectedCandidate}
+                  disabled={!selectedCandidate || Boolean(activeTool)}
                   className="rounded-xl bg-slate-900 px-5 py-2 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50"
                 >
-                  Jana AI
+                  {activeTool === "Jana AI" ? "Menjana..." : "Jana AI"}
                 </button>
               </div>
             </div>
@@ -395,15 +479,18 @@ export default function ModuleBuilderPage() {
                       <button
                         key={tool}
                         type="button"
+                        onClick={() => runAITool(tool)}
+                        disabled={!selectedCandidate || Boolean(activeTool)}
                         className="rounded-lg bg-white px-3 py-2 text-xs font-bold text-blue-700 shadow-sm hover:bg-blue-100"
                       >
-                        {tool}
+                        {activeTool === tool ? "Menjana..." : tool}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <textarea
+                  ref={editorRef}
                   value={draftContent}
                   onChange={(event) => setDraftContent(event.target.value)}
                   className="min-h-[560px] w-full rounded-2xl border border-blue-300 bg-white p-5 font-serif text-sm leading-7 text-slate-900 outline-none focus:border-blue-600"
