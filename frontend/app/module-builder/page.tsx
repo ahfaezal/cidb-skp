@@ -46,6 +46,21 @@ type ModuleCandidate = {
   groupIndex: number;
 };
 
+const COMPETENCY_OPTIONS = [
+  ["C01", "Business Operation Management"],
+  ["C02", "Tendering Management"],
+  ["C03", "Contract Implementation & Management"],
+  ["C04", "Project Planning & Scheduling"],
+  ["C05", "Construction Operation Management"],
+  ["C06", "Project Handover"],
+  ["C07", "Others"],
+] as const;
+
+function getCompetencyCode(grouping: SavedGrouping) {
+  if (grouping.source_code === "TAMBAHAN") return "C07";
+  return grouping.source_code;
+}
+
 function parseGroups(grouping: SavedGrouping): MappingGroup[] {
   try {
     const parsed = JSON.parse(grouping.groups_json) as MappingGroup[];
@@ -87,6 +102,7 @@ export default function ModuleBuilderPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
   const [savedGroupings, setSavedGroupings] = useState<SavedGrouping[]>([]);
+  const [selectedCompetencyCode, setSelectedCompetencyCode] = useState("C01");
   const [selectedCandidateId, setSelectedCandidateId] = useState("");
   const [mode, setMode] = useState<"builder" | "document">("builder");
   const [draftContent, setDraftContent] = useState("");
@@ -151,9 +167,18 @@ export default function ModuleBuilderPage() {
     [savedGroupings],
   );
 
+  const filteredCandidates = useMemo(
+    () =>
+      moduleCandidates.filter(
+        (candidate) =>
+          getCompetencyCode(candidate.grouping) === selectedCompetencyCode,
+      ),
+    [moduleCandidates, selectedCompetencyCode],
+  );
+
   const selectedCandidate =
-    moduleCandidates.find((candidate) => candidate.id === selectedCandidateId) ||
-    moduleCandidates[0] ||
+    filteredCandidates.find((candidate) => candidate.id === selectedCandidateId) ||
+    filteredCandidates[0] ||
     null;
 
   function generateDraft() {
@@ -198,17 +223,18 @@ export default function ModuleBuilderPage() {
             </select>
 
             <select
-              value={selectedCandidate?.id || ""}
+              value={selectedCompetencyCode}
               onChange={(event) => {
-                setSelectedCandidateId(event.target.value);
+                setSelectedCompetencyCode(event.target.value);
+                setSelectedCandidateId("");
                 setDraftContent("");
                 setMessage("");
               }}
               className="min-w-96 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-blue-500"
             >
-              {moduleCandidates.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.grouping.source_code} / Group {candidate.groupIndex} - {candidate.group.title}
+              {COMPETENCY_OPTIONS.map(([code, title]) => (
+                <option key={code} value={code}>
+                  {code}: {title}
                 </option>
               ))}
             </select>
@@ -219,7 +245,7 @@ export default function ModuleBuilderPage() {
           {[
             ["Selected Tred", selectedTrade?.code || "-"],
             ["Saved Mapping", savedGroupings.length],
-            ["Calon Modul", moduleCandidates.length],
+            ["Calon Modul", filteredCandidates.length],
             ["Mode", mode === "builder" ? "Builder" : "Document"],
           ].map(([label, value]) => (
             <div
@@ -243,13 +269,15 @@ export default function ModuleBuilderPage() {
             <div className="max-h-[760px] divide-y divide-slate-100 overflow-y-auto">
               {loading ? (
                 <p className="p-5 text-sm text-slate-500">Loading...</p>
-              ) : moduleCandidates.length === 0 ? (
+              ) : filteredCandidates.length === 0 ? (
                 <p className="p-5 text-sm text-slate-500">
-                  Belum ada saved grouping. Simpan hasil Mapping dahulu.
+                  Belum ada group untuk competency ini. Simpan hasil Mapping
+                  dahulu atau pilih competency lain.
                 </p>
               ) : (
-                moduleCandidates.map((candidate) => {
+                filteredCandidates.map((candidate) => {
                   const isSelected = selectedCandidate?.id === candidate.id;
+                  const competencyCode = getCompetencyCode(candidate.grouping);
                   return (
                     <button
                       key={candidate.id}
@@ -265,7 +293,7 @@ export default function ModuleBuilderPage() {
                       ].join(" ")}
                     >
                       <p className="text-xs font-bold uppercase text-blue-600">
-                        {candidate.grouping.source_code} / Group {candidate.groupIndex}
+                        {competencyCode} / Group {candidate.groupIndex}
                       </p>
                       <p className="mt-1 text-sm font-bold text-slate-900">
                         {candidate.group.title}
@@ -292,7 +320,7 @@ export default function ModuleBuilderPage() {
               <div>
                 <p className="text-xs font-bold uppercase text-blue-600">
                   {selectedCandidate
-                    ? `${selectedCandidate.grouping.source_code} / Group ${selectedCandidate.groupIndex}`
+                    ? `${getCompetencyCode(selectedCandidate.grouping)} / Group ${selectedCandidate.groupIndex}`
                     : "Hasil Mapping"}
                 </p>
                 <h2 className="mt-1 text-xl font-bold text-slate-900">
