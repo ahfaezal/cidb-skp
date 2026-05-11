@@ -53,7 +53,8 @@ def build_prompt(data: ModuleBuilderAIRequest):
         "Jadual": (
             "Create a practical learning table. Use maximum 5 columns and maximum 5 rows. "
             "If the topic is large, split into two small tables. Keep each cell short. "
-            "Use a valid Markdown table separator row like |---|---|---|."
+            "Use a valid Markdown table separator row like |---|---|---|. "
+            "Do not output malformed rows such as ||||||||."
         ),
         "Proses Flow": (
             "Create a clean process flow in numbered steps plus a short explanation in Malay. "

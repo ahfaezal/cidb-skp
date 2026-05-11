@@ -98,6 +98,20 @@ function buildDraftContent(candidate: ModuleCandidate | null) {
   ].join("\n\n");
 }
 
+function getInsertLabel(type: string) {
+  const labels: Record<string, string> = {
+    "Jana Gambar": "CADANGAN GAMBAR",
+    Carta: "CARTA",
+    Jadual: "JADUAL",
+    "Proses Flow": "PROSES FLOW",
+    "Tambah Huraian": "HURAIAN TAMBAHAN",
+    Rujukan: "RUJUKAN TAMBAHAN",
+    Latihan: "LATIHAN TAMBAHAN",
+  };
+
+  return labels[type] || "BAHAN SOKONGAN";
+}
+
 export default function ModuleBuilderPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [selectedTradeId, setSelectedTradeId] = useState<number | null>(null);
@@ -329,9 +343,90 @@ export default function ModuleBuilderPage() {
       return;
     }
 
-    insertIntoEditor(insertResult);
+    const blockToInsert = [
+      `[${getInsertLabel(insertType)}]`,
+      insertResult.trim(),
+      `[TAMAT ${getInsertLabel(insertType)}]`,
+    ].join("\n");
+
+    const nextContent = draftContent.trim()
+      ? `${draftContent.trim()}\n\n${blockToInsert}`
+      : blockToInsert;
+
+    setDraftContent(nextContent);
     setInsertResult("");
-    setMessage("Hasil panel kanan telah dimasukkan ke huraian.");
+    setMode("builder");
+    setMessage(`${getInsertLabel(insertType)} telah dimasukkan di hujung huraian.`);
+
+    window.setTimeout(() => {
+      const editor = editorRef.current;
+      if (!editor) return;
+      editor.focus();
+      editor.scrollTop = editor.scrollHeight;
+      editor.selectionStart = nextContent.length;
+      editor.selectionEnd = nextContent.length;
+    }, 0);
+  }
+
+  function renderResultPreview() {
+    if (!insertResult.trim()) {
+      return (
+        <p className="text-sm text-slate-500">
+          Preview visual akan dipaparkan selepas jana bahan sokongan.
+        </p>
+      );
+    }
+
+    const lines = insertResult.split("\n").filter((line) => line.trim());
+    const tableLines = lines.filter((line) => line.trim().startsWith("|"));
+
+    if (tableLines.length >= 2) {
+      const rows = tableLines
+        .filter((line) => !/^\|\s*-+/.test(line.trim()))
+        .map((line) =>
+          line
+            .split("|")
+            .slice(1, -1)
+            .map((cell) => cell.trim()),
+        )
+        .filter((row) => row.length > 0);
+      const [head, ...body] = rows;
+
+      return (
+        <div className="overflow-x-auto rounded-xl border border-slate-200">
+          <table className="min-w-full divide-y divide-slate-200 text-left text-xs">
+            {head && (
+              <thead className="bg-slate-50">
+                <tr>
+                  {head.map((cell, index) => (
+                    <th key={`${cell}-${index}`} className="px-3 py-2 font-bold text-slate-700">
+                      {cell}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+            )}
+            <tbody className="divide-y divide-slate-100 bg-white">
+              {body.map((row, rowIndex) => (
+                <tr key={`row-${rowIndex}`}>
+                  {row.map((cell, cellIndex) => (
+                    <td key={`${rowIndex}-${cellIndex}`} className="px-3 py-2 align-top text-slate-600">
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    return (
+      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-700">
+        <p className="whitespace-pre-line">{insertResult}</p>
+      </div>
+    );
   }
 
   const selectedTrade = trades.find((trade) => trade.id === selectedTradeId);
@@ -717,6 +812,17 @@ export default function ModuleBuilderPage() {
                   Masukkan
                 </button>
               </div>
+
+              <div className="mt-3">
+                <p className="mb-2 text-xs font-bold uppercase text-slate-500">
+                  Preview
+                </p>
+                {renderResultPreview()}
+              </div>
+
+              <p className="mt-4 text-xs font-bold uppercase text-slate-500">
+                Teks Boleh Edit
+              </p>
               <textarea
                 value={insertResult}
                 onChange={(event) => setInsertResult(event.target.value)}
