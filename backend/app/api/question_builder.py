@@ -48,6 +48,10 @@ class QuestionBuilderSettings(BaseModel):
 class QuestionBuilderDraftCreate(BaseModel):
     title: str = "Draf Soalan"
     ownerRef: str = "local-user"
+    ownerName: str = "Pengguna"
+    ownerRole: str = "Fasilitator"
+    projectRef: str = "General"
+    visibility: str = "Private"
     status: str = "Draft"
     settings: dict
     files: List[dict] = Field(default_factory=list)
@@ -59,6 +63,10 @@ class QuestionBuilderDraftResponse(BaseModel):
     id: int
     title: str
     ownerRef: str
+    ownerName: str
+    ownerRole: str
+    projectRef: str
+    visibility: str
     status: str
     settings: dict
     files: List[dict]
@@ -424,6 +432,10 @@ def draft_to_response(draft: QuestionBuilderDraft):
         id=draft.id,
         title=draft.title,
         ownerRef=draft.owner_ref,
+        ownerName=draft.owner_name,
+        ownerRole=draft.owner_role,
+        projectRef=draft.project_ref,
+        visibility=draft.visibility,
         status=draft.status,
         settings=json.loads(draft.settings_json),
         files=json.loads(draft.files_json),
@@ -437,14 +449,24 @@ def draft_to_response(draft: QuestionBuilderDraft):
 @router.get("/drafts", response_model=List[QuestionBuilderDraftResponse])
 def get_question_builder_drafts(
     ownerRef: str = "local-user",
+    ownerRole: str = "Fasilitator",
+    projectRef: str = "General",
+    scope: str = "mine",
     db: Session = Depends(get_db),
 ):
-    drafts = (
-        db.query(QuestionBuilderDraft)
-        .filter(QuestionBuilderDraft.owner_ref == ownerRef)
-        .order_by(QuestionBuilderDraft.updated_at.desc(), QuestionBuilderDraft.id.desc())
-        .all()
-    )
+    query = db.query(QuestionBuilderDraft)
+
+    if scope == "all" and ownerRole == "Super Admin":
+        pass
+    elif scope == "project":
+        query = query.filter(QuestionBuilderDraft.project_ref == projectRef)
+    else:
+        query = query.filter(QuestionBuilderDraft.owner_ref == ownerRef)
+
+    drafts = query.order_by(
+        QuestionBuilderDraft.updated_at.desc(),
+        QuestionBuilderDraft.id.desc(),
+    ).all()
 
     return [draft_to_response(draft) for draft in drafts]
 
@@ -474,6 +496,10 @@ def save_question_builder_draft(
     draft = QuestionBuilderDraft(
         title=data.title.strip() or "Draf Soalan",
         owner_ref=data.ownerRef.strip() or "local-user",
+        owner_name=data.ownerName.strip() or "Pengguna",
+        owner_role=data.ownerRole.strip() or "Fasilitator",
+        project_ref=data.projectRef.strip() or "General",
+        visibility=data.visibility.strip() or "Private",
         status=data.status,
         settings_json=json.dumps(data.settings, ensure_ascii=False),
         files_json=json.dumps(data.files, ensure_ascii=False),

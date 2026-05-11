@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   Edit3,
@@ -24,6 +24,14 @@ type SkillCategory =
   | "Prosedur"
   | "Fakta / Teori"
   | "Sikap / Keselamatan / Persekitaran";
+type UserRole =
+  | "Super Admin"
+  | "Project Manager"
+  | "Fasilitator"
+  | "Pegawai CIDB"
+  | "Pegawai Penilai"
+  | "Ahli Panel Pembangun";
+type DraftScope = "mine" | "project" | "all";
 
 type UploadedFile = {
   id: string;
@@ -77,6 +85,10 @@ type SavedQuestionDraft = {
   id: number;
   title: string;
   ownerRef: string;
+  ownerName: string;
+  ownerRole: UserRole;
+  projectRef: string;
+  visibility: string;
   status: string;
   settings: {
     questionTypes?: QuestionType[];
@@ -94,6 +106,13 @@ type SavedQuestionDraft = {
   updatedAt: string;
 };
 
+type UserProfile = {
+  ownerRef: string;
+  ownerName: string;
+  ownerRole: UserRole;
+  projectRef: string;
+};
+
 const questionTypeOptions: QuestionType[] = ["Objektif", "Subjektif"];
 const skillOptions: SkillCategory[] = [
   "Prosedur",
@@ -105,6 +124,20 @@ const difficultyOptions: Array<{ value: Difficulty; label: string }> = [
   { value: "Aras Sederhana", label: "Aras Sederhana" },
   { value: "Aras Tinggi", label: "Aras Tinggi" },
 ];
+const roleOptions: UserRole[] = [
+  "Super Admin",
+  "Project Manager",
+  "Fasilitator",
+  "Pegawai CIDB",
+  "Pegawai Penilai",
+  "Ahli Panel Pembangun",
+];
+const defaultUserProfile: UserProfile = {
+  ownerRef: "user-demo",
+  ownerName: "Pengguna Demo",
+  ownerRole: "Fasilitator",
+  projectRef: "SKP-CIDB",
+};
 
 const initialAnalysis: Analysis = {
   detectedTopics: [],
@@ -258,6 +291,24 @@ export default function QuestionBankPage() {
   const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
   const [error, setError] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
+    if (typeof window === "undefined") {
+      return defaultUserProfile;
+    }
+
+    const savedProfile = window.localStorage.getItem("skpQuestionUserProfile");
+    if (!savedProfile) {
+      return defaultUserProfile;
+    }
+
+    try {
+      return { ...defaultUserProfile, ...JSON.parse(savedProfile) };
+    } catch {
+      window.localStorage.removeItem("skpQuestionUserProfile");
+      return defaultUserProfile;
+    }
+  });
+  const [draftScope, setDraftScope] = useState<DraftScope>("mine");
 
   const totalQuestions =
     (questionTypes.includes("Objektif") ? objectiveCount : 0) +
@@ -283,16 +334,21 @@ export default function QuestionBankPage() {
         storage: null,
       }));
 
-  useEffect(() => {
-    loadSavedDrafts();
-  }, []);
-
-  async function loadSavedDrafts() {
+  const loadSavedDrafts = useCallback(async (
+    profile: UserProfile = userProfile,
+    scope: DraftScope = draftScope,
+  ) => {
     setIsLoadingDrafts(true);
 
     try {
+      const params = new URLSearchParams({
+        ownerRef: profile.ownerRef,
+        ownerRole: profile.ownerRole,
+        projectRef: profile.projectRef,
+        scope,
+      });
       const response = await fetch(
-        `${API_BASE_URL}/question-builder/drafts?ownerRef=local-user`,
+        `${API_BASE_URL}/question-builder/drafts?${params.toString()}`,
       );
 
       if (!response.ok) return;
@@ -301,6 +357,23 @@ export default function QuestionBankPage() {
     } finally {
       setIsLoadingDrafts(false);
     }
+  }, [draftScope, userProfile]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadSavedDrafts();
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [loadSavedDrafts]);
+
+  function saveUserProfile() {
+    window.localStorage.setItem(
+      "skpQuestionUserProfile",
+      JSON.stringify(userProfile),
+    );
+    setDraftMessage("Profil pengguna disimpan untuk browser ini.");
+    loadSavedDrafts(userProfile, draftScope);
   }
 
   function loadDraft(draft: SavedQuestionDraft) {
@@ -392,7 +465,7 @@ export default function QuestionBankPage() {
 
     try {
       const formData = new FormData();
-      formData.append("ownerRef", "local-user");
+      formData.append("ownerRef", userProfile.ownerRef);
       formData.append(
         "settings",
         JSON.stringify({
@@ -471,7 +544,11 @@ export default function QuestionBankPage() {
         },
         body: JSON.stringify({
           title: getDocumentTitle(activeFileRecords),
-          ownerRef: "local-user",
+          ownerRef: userProfile.ownerRef,
+          ownerName: userProfile.ownerName,
+          ownerRole: userProfile.ownerRole,
+          projectRef: userProfile.projectRef,
+          visibility: draftScope === "project" ? "Project" : "Private",
           status: "Draft",
           settings,
           files: activeFileRecords,
@@ -566,6 +643,75 @@ export default function QuestionBankPage() {
 
         <section className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)_330px]">
           <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 p-4">
+              <StepTitle no={0} title="Profil Pengguna" />
+              <div className="space-y-3">
+                <label className="block text-xs font-bold text-slate-600">
+                  Nama pengguna
+                  <input
+                    value={userProfile.ownerName}
+                    onChange={(event) =>
+                      setUserProfile((current) => ({
+                        ...current,
+                        ownerName: event.target.value,
+                      }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                  />
+                </label>
+                <label className="block text-xs font-bold text-slate-600">
+                  ID pengguna
+                  <input
+                    value={userProfile.ownerRef}
+                    onChange={(event) =>
+                      setUserProfile((current) => ({
+                        ...current,
+                        ownerRef: event.target.value,
+                      }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                  />
+                </label>
+                <label className="block text-xs font-bold text-slate-600">
+                  Peranan
+                  <select
+                    value={userProfile.ownerRole}
+                    onChange={(event) =>
+                      setUserProfile((current) => ({
+                        ...current,
+                        ownerRole: event.target.value as UserRole,
+                      }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                  >
+                    {roleOptions.map((role) => (
+                      <option key={role}>{role}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="block text-xs font-bold text-slate-600">
+                  Projek / batch
+                  <input
+                    value={userProfile.projectRef}
+                    onChange={(event) =>
+                      setUserProfile((current) => ({
+                        ...current,
+                        projectRef: event.target.value,
+                      }))
+                    }
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={saveUserProfile}
+                  className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800"
+                >
+                  Simpan Profil
+                </button>
+              </div>
+            </div>
+
             <div className="border-b border-slate-200 p-4">
               <StepTitle no={1} title="Upload Nota" />
               <input
@@ -1142,6 +1288,9 @@ export default function QuestionBankPage() {
               <h2 className="text-base font-bold text-slate-900">Ringkasan Tetapan</h2>
               <div className="mt-4 space-y-3 border-t border-slate-200 pt-4 text-sm">
                 {[
+                  ["Pengguna", userProfile.ownerName || "-"],
+                  ["Peranan", userProfile.ownerRole],
+                  ["Projek", userProfile.projectRef || "-"],
                   ["Fail Nota", activeFileRecords.length ? `${activeFileRecords.length} fail` : "Belum dipilih"],
                   ["Jenis Soalan", questionTypes.join(", ") || "-"],
                   ["Jumlah Soalan", String(totalQuestions)],
@@ -1161,15 +1310,31 @@ export default function QuestionBankPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <h2 className="text-base font-bold text-slate-900">Draf Tersimpan</h2>
+              <h2 className="text-base font-bold text-slate-900">Draf Tersimpan</h2>
+              <div className="mt-3 grid gap-2">
+                <select
+                  value={draftScope}
+                  onChange={(event) => setDraftScope(event.target.value as DraftScope)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-800 outline-none focus:border-blue-400"
+                >
+                  <option value="mine">Draf saya sahaja</option>
+                  <option value="project">Semua draf projek ini</option>
+                  <option value="all" disabled={userProfile.ownerRole !== "Super Admin"}>
+                    Semua draf sistem
+                  </option>
+                </select>
                 <button
                   type="button"
-                  onClick={loadSavedDrafts}
-                  className="text-xs font-bold text-blue-600"
+                  onClick={() => loadSavedDrafts()}
+                  className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
                 >
-                  Muat Semula
+                  Muat Semula Draf
                 </button>
+                {draftScope === "all" && userProfile.ownerRole !== "Super Admin" ? (
+                  <p className="text-xs font-semibold text-red-600">
+                    Paparan semua draf hanya untuk Super Admin.
+                  </p>
+                ) : null}
               </div>
 
               <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
@@ -1190,6 +1355,9 @@ export default function QuestionBankPage() {
                       </p>
                       <p className="mt-1 text-xs text-slate-500">
                         ID {draft.id} - {draft.questions.length} soalan - {draft.status}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {draft.ownerName || draft.ownerRef} - {draft.ownerRole} - {draft.projectRef}
                       </p>
                     </button>
                   ))

@@ -90,6 +90,38 @@ def ensure_cmcs_columns():
 
 ensure_cmcs_columns()
 
+
+def ensure_question_builder_draft_columns():
+    inspector = inspect(engine)
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns("question_builder_drafts")
+    }
+    required_columns = {
+        "owner_name": "VARCHAR(255) NOT NULL DEFAULT 'Pengguna'",
+        "owner_role": "VARCHAR(100) NOT NULL DEFAULT 'Fasilitator'",
+        "project_ref": "VARCHAR(255) NOT NULL DEFAULT 'General'",
+        "visibility": "VARCHAR(50) NOT NULL DEFAULT 'Private'",
+    }
+
+    missing_columns = [
+        (name, column_type)
+        for name, column_type in required_columns.items()
+        if name not in existing_columns
+    ]
+
+    if not missing_columns:
+        return
+
+    with engine.begin() as connection:
+        for name, column_type in missing_columns:
+            connection.execute(
+                text(f"ALTER TABLE question_builder_drafts ADD COLUMN {name} {column_type}")
+            )
+
+
+ensure_question_builder_draft_columns()
+
 app = FastAPI(
     title="SKP-CIDB Builder API"
 )
