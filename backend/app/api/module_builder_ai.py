@@ -33,8 +33,10 @@ def build_prompt(data: ModuleBuilderAIRequest):
     selected = data.selected_text.strip() or data.current_content.strip()
     action_guides = {
         "Jana AI": (
-            "Generate a complete Malay learning package draft using the required SKP format: "
-            "Tajuk, Objektif, Penerangan, numbered content sections, Rujukan, Latihan, Skema Jawapan."
+            "Generate a complete Malay learning package draft using this exact clean SKP note format: "
+            "Tajuk, Objektif, Penerangan, numbered learning sections, Rujukan, Latihan, Skema Jawapan. "
+            "The Penerangan section must be written as learning notes in paragraphs, not only one summary. "
+            "Use clear facilitator-friendly paragraphs before numbered subtopics."
         ),
         "Tambah Huraian": (
             "Expand the selected paragraph into a clearer, richer teaching explanation in Malay. "
@@ -45,15 +47,16 @@ def build_prompt(data: ModuleBuilderAIRequest):
             "style, composition, and what the image must teach. Return as a module insert block."
         ),
         "Carta": (
-            "Create a clear chart/table-style content block in Markdown. Include title, columns, rows, "
+            "Create a clear chart/table-style content block. Include title, columns, rows, "
             "and short explanation."
         ),
         "Jadual": (
-            "Create a practical Markdown table for the selected topic. Include columns suitable for "
+            "Create a practical text table for the selected topic. Include columns suitable for "
             "training, inspection, documents, risks, controls, and evidence."
         ),
         "Proses Flow": (
-            "Create a process flow using Mermaid flowchart syntax plus a short explanation in Malay."
+            "Create a clean process flow in numbered steps plus a short explanation in Malay. "
+            "Avoid Mermaid unless explicitly requested."
         ),
         "Rujukan": (
             "Generate credible reference categories and document examples for this module. Avoid fake "
@@ -70,6 +73,15 @@ def build_prompt(data: ModuleBuilderAIRequest):
     return f"""
 You are assisting SKP-CIDB module development for Malaysian competency-based training.
 Write in Malay unless a short English image prompt is requested.
+
+Formatting rules:
+- Do not use Markdown decoration such as **bold**, ### headings, --- separators, or backticks.
+- Do not use asterisks for emphasis.
+- Use clean plain text headings only.
+- Use numbered headings like "1. Pengenalan" and subheadings like "1.1 Skop kerja".
+- Write the Penerangan section as learning-note paragraphs with enough explanation for trainees.
+- Keep bullets readable using simple hyphen lines only when needed.
+- Return polished text that can be pasted directly into a learning package.
 
 Action:
 {data.action}
@@ -95,6 +107,39 @@ Selected/current text to work on:
 
 Return only the content to insert into the module editor. Do not wrap in JSON.
 """
+
+
+def clean_ai_content(content: str):
+    replacements = {
+        "**": "",
+        "### ": "",
+        "## ": "",
+        "# ": "",
+        "---": "",
+        "`": "",
+        "*safety-critical*": "safety-critical",
+        "*traceability*": "traceability",
+    }
+    cleaned = content.strip()
+
+    for source, target in replacements.items():
+        cleaned = cleaned.replace(source, target)
+
+    lines = [line.rstrip() for line in cleaned.splitlines()]
+    compacted = []
+    blank_count = 0
+
+    for line in lines:
+        if not line.strip():
+            blank_count += 1
+            if blank_count <= 2:
+                compacted.append("")
+            continue
+
+        blank_count = 0
+        compacted.append(line)
+
+    return "\n".join(compacted).strip()
 
 
 @router.post("/generate", response_model=ModuleBuilderAIResponse)
@@ -128,7 +173,7 @@ async def generate_module_builder_content(data: ModuleBuilderAIRequest):
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail="AI generation request failed.") from exc
 
-    content = extract_response_text(response.json()).strip()
+    content = clean_ai_content(extract_response_text(response.json()))
 
     if not content:
         raise HTTPException(status_code=502, detail="AI returned empty content.")

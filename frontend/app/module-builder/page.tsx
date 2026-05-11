@@ -108,6 +108,7 @@ export default function ModuleBuilderPage() {
   const [draftContent, setDraftContent] = useState("");
   const [message, setMessage] = useState("");
   const [activeTool, setActiveTool] = useState("");
+  const [selectedEditorText, setSelectedEditorText] = useState("");
   const [loading, setLoading] = useState(true);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -203,6 +204,10 @@ export default function ModuleBuilderPage() {
     return draftContent.slice(editor.selectionStart, editor.selectionEnd).trim();
   }
 
+  function refreshSelectedEditorText() {
+    setSelectedEditorText(getSelectedEditorText());
+  }
+
   function insertIntoEditor(content: string, replaceSelection = false) {
     const editor = editorRef.current;
 
@@ -253,6 +258,7 @@ export default function ModuleBuilderPage() {
       }
 
       setMode("builder");
+      setSelectedEditorText("");
       setMessage(`${action} selesai. Semak dan edit kandungan sebelum Document Mode.`);
     } catch (err) {
       if (action === "Jana AI") {
@@ -489,10 +495,48 @@ export default function ModuleBuilderPage() {
                   </div>
                 </div>
 
+                {selectedEditorText && (
+                  <div className="sticky top-3 z-10 rounded-2xl border border-slate-300 bg-white p-4 shadow-lg">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase text-slate-500">
+                          Teks Dipilih
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-sm text-slate-700">
+                          {selectedEditorText}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          "Tambah Huraian",
+                          "Jana Gambar",
+                          "Carta",
+                          "Jadual",
+                          "Proses Flow",
+                        ].map((tool) => (
+                          <button
+                            key={`selected-${tool}`}
+                            type="button"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => runAITool(tool)}
+                            disabled={!selectedCandidate || Boolean(activeTool)}
+                            className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {activeTool === tool ? "Menjana..." : tool}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <textarea
                   ref={editorRef}
                   value={draftContent}
                   onChange={(event) => setDraftContent(event.target.value)}
+                  onSelect={refreshSelectedEditorText}
+                  onKeyUp={refreshSelectedEditorText}
+                  onMouseUp={refreshSelectedEditorText}
                   className="min-h-[560px] w-full rounded-2xl border border-blue-300 bg-white p-5 font-serif text-sm leading-7 text-slate-900 outline-none focus:border-blue-600"
                   placeholder={[
                     "Tajuk:",
