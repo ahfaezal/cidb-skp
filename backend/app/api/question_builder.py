@@ -41,6 +41,16 @@ class QuestionBuilderSettings(BaseModel):
     generateRubric: bool = True
 
 
+def normalize_settings(settings: QuestionBuilderSettings):
+    if "Objektif" not in settings.questionTypes:
+        settings.objectiveCount = 0
+
+    if "Subjektif" not in settings.questionTypes:
+        settings.subjectiveCount = 0
+
+    return settings
+
+
 def clean_json_text(value: str):
     cleaned = value.strip()
     cleaned = re.sub(r"^```(?:json)?", "", cleaned, flags=re.I).strip()
@@ -86,7 +96,7 @@ async def build_file_content(files: List[UploadFile]):
             content.append(
                 {
                     "type": "input_text",
-                    "text": f"Fail nota: {filename}\n\n{text}",
+                    "text": f"Kandungan nota rujukan:\n\n{text}",
                 }
             )
             continue
@@ -96,7 +106,7 @@ async def build_file_content(files: List[UploadFile]):
             content.append(
                 {
                     "type": "input_text",
-                    "text": f"Fail nota DOCX: {filename}\n\n{text}",
+                    "text": f"Kandungan nota rujukan DOCX:\n\n{text}",
                 }
             )
             continue
@@ -151,7 +161,7 @@ def validate_settings(settings: QuestionBuilderSettings):
         raise HTTPException(status_code=422, detail="Aras soalan tidak sah.")
 
 
-def build_prompt(settings: QuestionBuilderSettings, file_names: List[str]):
+def build_prompt(settings: QuestionBuilderSettings):
     total_questions = 0
     if "Objektif" in settings.questionTypes:
         total_questions += settings.objectiveCount
@@ -162,9 +172,10 @@ def build_prompt(settings: QuestionBuilderSettings, file_names: List[str]):
 Anda ialah pembina soalan AI untuk platform SKP-CIDB.
 Tulis dalam Bahasa Melayu profesional.
 Gunakan kandungan fail nota yang dilampirkan sebagai sumber utama. Jangan jana soalan template atau soalan umum yang tidak berpaut kepada nota.
+Jangan sebut nama fail, nombor fail, "Nota PL", atau rujukan kepada fail upload dalam teks soalan, pilihan jawapan, skema, rasional, rubrik atau topik analisis.
 
 7 input pengguna yang wajib digunakan:
-1. Fail nota: {", ".join(file_names)}
+1. Kandungan nota yang dimuat naik oleh pengguna
 2. Jenis soalan: {", ".join(settings.questionTypes)}
 3. Jumlah soalan: Objektif {settings.objectiveCount}, Subjektif {settings.subjectiveCount}, keseluruhan {total_questions}
 4. Keterampilan soalan: {", ".join(settings.skillCategories)}
@@ -174,6 +185,8 @@ Gunakan kandungan fail nota yang dilampirkan sebagai sumber utama. Jangan jana s
 
 Peraturan wajib:
 - Jana tepat mengikut jumlah soalan yang diminta untuk jenis yang dipilih.
+- Jika jenis soalan tidak dipilih, jangan jana soalan jenis tersebut walaupun nilai count wujud dalam tetapan.
+- Jumlah questions array mesti tepat {total_questions}. Jangan lebih dan jangan kurang.
 - Setiap soalan mesti mempunyai satu skillCategory daripada keterampilan yang dipilih sahaja.
 - Setiap soalan mesti mempunyai satu difficulty daripada aras yang dipilih sahaja.
 - Soalan objektif mesti ada 4 pilihan A-D, correctAnswer, rationale ringkas dan answerScheme jika diminta.
@@ -208,6 +221,69 @@ Pulangkan JSON sah sahaja, tanpa Markdown, dalam format:
 """
 
 
+def enforce_generation_settings(result: dict, settings: QuestionBuilderSettings):
+    questions = result.get("questions")
+
+    if not isinstance(questions, list):
+        result["questions"] = []
+        return result
+
+    allowed_types = set(settings.questionTypes)
+    allowed_skills = set(settings.skillCategories)
+    allowed_levels = set(settings.difficultyLevels)
+    target_counts = {
+        "Objektif": settings.objectiveCount,
+        "Subjektif": settings.subjectiveCount,
+    }
+    seen_counts = {"Objektif": 0, "Subjektif": 0}
+    filtered = []
+
+    for question in questions:
+        if not isinstance(question, dict):
+            continue
+
+        question_type = question.get("type")
+        skill_category = question.get("skillCategory")
+        difficulty = question.get("difficulty")
+
+        if question_type not in allowed_types:
+            continue
+        if skill_category not in allowed_skills:
+            continue
+        if difficulty not in allowed_levels:
+            continue
+        if seen_counts[question_type] >= target_counts[question_type]:
+            continue
+
+        seen_counts[question_type] += 1
+        question["id"] = f"q{len(filtered) + 1}"
+        filtered.append(question)
+
+    result["questions"] = filtered
+
+    if "analysis" not in result or not isinstance(result["analysis"], dict):
+        result["analysis"] = {}
+
+    result["analysis"]["skillDistribution"] = {
+        skill: round(
+            sum(1 for question in filtered if question.get("skillCategory") == skill)
+            / max(1, len(filtered))
+            * 100
+        )
+        for skill in settings.skillCategories
+    }
+    result["analysis"]["difficultyDistribution"] = {
+        level: round(
+            sum(1 for question in filtered if question.get("difficulty") == level)
+            / max(1, len(filtered))
+            * 100
+        )
+        for level in settings.difficultyLevels
+    }
+
+    return result
+
+
 @router.post("/generate")
 async def generate_questions(
     settings: str = Form(...),
@@ -234,8 +310,9 @@ async def generate_questions(
             detail="Sila upload sekurang-kurangnya satu fail nota.",
         )
 
-    file_content, file_names = await build_file_content(files)
-    prompt = build_prompt(parsed_settings, file_names)
+    parsed_settings = normalize_settings(parsed_settings)
+    file_content, _file_names = await build_file_content(files)
+    prompt = build_prompt(parsed_settings)
 
     payload = {
         "model": os.getenv("OPENAI_MODEL", "gpt-5.2"),
@@ -270,9 +347,11 @@ async def generate_questions(
     output_text = clean_json_text(extract_response_text(response.json()))
 
     try:
-        return json.loads(output_text)
+        result = json.loads(output_text)
     except json.JSONDecodeError as exc:
         raise HTTPException(
             status_code=502,
             detail="AI response was not valid JSON.",
         ) from exc
+
+    return enforce_generation_settings(result, parsed_settings)
