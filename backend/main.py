@@ -39,6 +39,7 @@ from app.models.performance_criteria import PerformanceCriteria
 
 from app.api.performance_criteria_items import router as performance_criteria_items_router
 from app.models.performance_criteria_item import PerformanceCriteriaItem
+from app.api.question_builder import router as question_builder_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -116,6 +117,7 @@ app.include_router(competency_units_router)
 app.include_router(work_activities_router)
 app.include_router(performance_criteria_router)
 app.include_router(performance_criteria_items_router)
+app.include_router(question_builder_router)
 
 
 @app.get("/")

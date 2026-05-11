@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/layouts/AppShell";
+import { API_BASE_URL } from "@/src/lib/api";
 
 type QuestionType = "Objektif" | "Subjektif";
 type Difficulty = "Aras Rendah" | "Aras Sederhana" | "Aras Tinggi";
@@ -288,14 +289,14 @@ export default function QuestionBankPage() {
         formData.append("files", item.file, item.name);
       });
 
-      const response = await fetch("/api/question-builder/generate", {
+      const response = await fetch(`${API_BASE_URL}/question-builder/generate`, {
         method: "POST",
         body: formData,
       });
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
-        throw new Error(payload?.error || "AI gagal menjana soalan.");
+        throw new Error(payload?.detail || payload?.error || "AI gagal menjana soalan.");
       }
 
       const payload = (await response.json()) as {
