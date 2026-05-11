@@ -33,8 +33,11 @@ const menuItems = [
 export function AppSidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
+  const panelOnlyMenu = menuItems.filter((item) => item.href === "/question-bank");
   const visibleMenuItems =
-    user?.role === "Super Admin"
+    user?.role === "Ahli Panel Pembangun"
+      ? panelOnlyMenu
+      : user?.role === "Super Admin"
       ? [...menuItems, { label: "Users", href: "/users", icon: Users }]
       : menuItems;
 
