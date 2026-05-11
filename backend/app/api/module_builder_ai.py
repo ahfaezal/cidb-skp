@@ -47,12 +47,13 @@ def build_prompt(data: ModuleBuilderAIRequest):
             "style, composition, and what the image must teach. Return as a module insert block."
         ),
         "Carta": (
-            "Create a clear chart/table-style content block. Include title, columns, rows, "
-            "and short explanation."
+            "Create a compact chart-style learning block. Use short labels, not long paragraphs. "
+            "If a table is needed, use maximum 5 columns and 5 rows."
         ),
         "Jadual": (
-            "Create a practical text table for the selected topic. Include columns suitable for "
-            "training, inspection, documents, risks, controls, and evidence."
+            "Create a practical learning table. Use maximum 5 columns and maximum 5 rows. "
+            "If the topic is large, split into two small tables. Keep each cell short. "
+            "Use a valid Markdown table separator row like |---|---|---|."
         ),
         "Proses Flow": (
             "Create a clean process flow in numbered steps plus a short explanation in Malay. "

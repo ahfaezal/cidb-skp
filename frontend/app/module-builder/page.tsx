@@ -109,6 +109,9 @@ export default function ModuleBuilderPage() {
   const [message, setMessage] = useState("");
   const [activeTool, setActiveTool] = useState("");
   const [selectedEditorText, setSelectedEditorText] = useState("");
+  const [insertSource, setInsertSource] = useState("");
+  const [insertType, setInsertType] = useState("Jadual");
+  const [insertResult, setInsertResult] = useState("");
   const [loading, setLoading] = useState(true);
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -278,6 +281,59 @@ export default function ModuleBuilderPage() {
     setMode("builder");
   }
 
+  async function generateInsertBlock() {
+    if (!selectedCandidate) {
+      setMessage("Pilih group modul dahulu.");
+      return;
+    }
+
+    if (!insertSource.trim()) {
+      setMessage("Paste maklumat sumber di panel kanan dahulu.");
+      return;
+    }
+
+    setActiveTool(insertType);
+    setMessage(`${insertType} sedang dijana daripada maklumat panel kanan...`);
+
+    try {
+      const response = await axios.post<{ content: string }>(
+        `${API_BASE_URL}/module-builder-ai/generate`,
+        {
+          action: insertType,
+          trade_title: selectedTrade
+            ? `${selectedTrade.code} - ${selectedTrade.title}`
+            : "",
+          competency_code: getCompetencyCode(selectedCandidate.grouping),
+          competency_title: selectedCandidate.grouping.source_title,
+          group_title: selectedCandidate.group.title,
+          group_subtitle: selectedCandidate.group.subtitle,
+          mapping_context: getMappingContext(selectedCandidate),
+          current_content: draftContent,
+          selected_text: insertSource,
+        },
+      );
+
+      setInsertResult(response.data.content);
+      setMessage(`${insertType} selesai. Semak hasil di panel kanan sebelum masukkan ke huraian.`);
+    } catch (err) {
+      setMessage(`${insertType} gagal dijana. Cuba pendekkan maklumat sumber atau semak backend AI.`);
+      console.error(err);
+    } finally {
+      setActiveTool("");
+    }
+  }
+
+  function insertGeneratedBlock() {
+    if (!insertResult.trim()) {
+      setMessage("Tiada hasil untuk dimasukkan.");
+      return;
+    }
+
+    insertIntoEditor(insertResult);
+    setInsertResult("");
+    setMessage("Hasil panel kanan telah dimasukkan ke huraian.");
+  }
+
   const selectedTrade = trades.find((trade) => trade.id === selectedTradeId);
   const documentSections = draftContent.split(/\n\n+/).filter(Boolean);
 
@@ -348,7 +404,7 @@ export default function ModuleBuilderPage() {
           ))}
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[360px_1fr]">
+        <section className="grid gap-6 xl:grid-cols-[320px_1fr_360px]">
           <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-5 py-4">
               <h2 className="text-lg font-bold text-slate-900">
@@ -593,6 +649,82 @@ export default function ModuleBuilderPage() {
               </div>
             )}
           </main>
+
+          <aside className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <p className="text-xs font-bold uppercase text-blue-600">
+                AI Insert Builder
+              </p>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">
+                Jana Bahan Sokongan
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Paste petikan atau nota ringkas di sini, jana bahan sokongan,
+                kemudian masukkan hasilnya ke huraian modul.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <label className="text-xs font-bold uppercase text-slate-500">
+                Jenis Bahan
+              </label>
+              <select
+                value={insertType}
+                onChange={(event) => {
+                  setInsertType(event.target.value);
+                  setInsertResult("");
+                }}
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm font-semibold outline-none focus:border-blue-500"
+              >
+                <option value="Jana Gambar">Cadangan Gambar</option>
+                <option value="Carta">Carta Ringkas</option>
+                <option value="Jadual">Jadual Ringkas</option>
+                <option value="Proses Flow">Proses Flow</option>
+                <option value="Tambah Huraian">Tambah Huraian</option>
+                <option value="Rujukan">Rujukan</option>
+                <option value="Latihan">Latihan</option>
+              </select>
+
+              <label className="mt-4 block text-xs font-bold uppercase text-slate-500">
+                Maklumat Sumber
+              </label>
+              <textarea
+                value={insertSource}
+                onChange={(event) => setInsertSource(event.target.value)}
+                className="mt-2 min-h-44 w-full rounded-xl border border-slate-200 p-3 text-sm leading-6 outline-none focus:border-blue-500"
+                placeholder="Paste perenggan, point penting, atau petikan huraian di sini."
+              />
+
+              <button
+                type="button"
+                onClick={generateInsertBlock}
+                disabled={Boolean(activeTool) || !selectedCandidate}
+                className="mt-3 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-bold text-white hover:bg-slate-700 disabled:opacity-50"
+              >
+                {activeTool === insertType ? "Menjana..." : `Jana ${insertType}`}
+              </button>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="font-bold text-slate-900">Hasil Jana</h3>
+                <button
+                  type="button"
+                  onClick={insertGeneratedBlock}
+                  disabled={!insertResult.trim()}
+                  className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  Masukkan
+                </button>
+              </div>
+              <textarea
+                value={insertResult}
+                onChange={(event) => setInsertResult(event.target.value)}
+                className="mt-3 min-h-64 w-full rounded-xl border border-slate-200 p-3 text-sm leading-6 outline-none focus:border-blue-500"
+                placeholder="Hasil gambar/carta/jadual/flow akan dipaparkan di sini untuk disemak."
+              />
+            </div>
+          </aside>
         </section>
       </div>
     </AppShell>
