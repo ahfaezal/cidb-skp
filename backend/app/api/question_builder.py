@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.db.database import SessionLocal
 from app.models.question_builder_draft import QuestionBuilderDraft
 from app.api.trade_cmcs_mappings import extract_response_text
+from app.services.s3_storage import upload_question_file
 
 router = APIRouter(
     prefix="/question-builder",
@@ -115,15 +116,36 @@ def extract_docx_text(file_bytes: bytes):
     return "\n".join(paragraphs).strip()
 
 
-async def build_file_content(files: List[UploadFile]):
+async def build_file_content(files: List[UploadFile], owner_ref: str):
     content = []
-    file_names = []
+    file_records = []
 
     for upload in files:
         file_bytes = await upload.read()
         filename = upload.filename or "nota"
         extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-        file_names.append(filename)
+
+        if extension not in {"txt", "docx", "pdf"}:
+            raise HTTPException(
+                status_code=415,
+                detail="Hanya fail PDF, DOCX dan TXT disokong.",
+            )
+
+        storage = upload_question_file(
+            file_bytes=file_bytes,
+            filename=filename,
+            content_type=upload.content_type or "application/octet-stream",
+            owner_ref=owner_ref,
+        )
+        file_records.append(
+            {
+                "id": f"{filename}-{len(file_bytes)}",
+                "name": filename,
+                "size": len(file_bytes),
+                "type": upload.content_type or extension.upper() or "FILE",
+                "storage": storage,
+            }
+        )
 
         if extension == "txt":
             text = file_bytes.decode("utf-8", errors="ignore").strip()
@@ -156,12 +178,7 @@ async def build_file_content(files: List[UploadFile]):
             )
             continue
 
-        raise HTTPException(
-            status_code=415,
-            detail="Hanya fail PDF, DOCX dan TXT disokong.",
-        )
-
-    return content, file_names
+    return content, file_records
 
 
 def validate_settings(settings: QuestionBuilderSettings):
@@ -321,6 +338,7 @@ def enforce_generation_settings(result: dict, settings: QuestionBuilderSettings)
 @router.post("/generate")
 async def generate_questions(
     settings: str = Form(...),
+    ownerRef: str = Form("local-user"),
     files: Optional[List[UploadFile]] = File(None),
 ):
     api_key = os.getenv("OPENAI_API_KEY")
@@ -345,7 +363,15 @@ async def generate_questions(
         )
 
     parsed_settings = normalize_settings(parsed_settings)
-    file_content, _file_names = await build_file_content(files)
+    try:
+        file_content, file_records = await build_file_content(files, ownerRef)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="Fail nota gagal disimpan ke S3. Semak AWS key, bucket dan permission.",
+        ) from exc
     prompt = build_prompt(parsed_settings)
 
     payload = {
@@ -388,7 +414,9 @@ async def generate_questions(
             detail="AI response was not valid JSON.",
         ) from exc
 
-    return enforce_generation_settings(result, parsed_settings)
+    result = enforce_generation_settings(result, parsed_settings)
+    result["files"] = file_records
+    return result
 
 
 def draft_to_response(draft: QuestionBuilderDraft):

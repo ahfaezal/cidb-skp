@@ -33,6 +33,20 @@ type UploadedFile = {
   file: File;
 };
 
+type QuestionFileRecord = {
+  id?: string;
+  name: string;
+  size: number;
+  type: string;
+  storage?: {
+    storage: string;
+    bucket: string;
+    region: string;
+    key: string;
+    url: string;
+  } | null;
+};
+
 type RubricItem = {
   criteria: string;
   marks: number;
@@ -73,7 +87,7 @@ type SavedQuestionDraft = {
     generateAnswerScheme?: boolean;
     generateRubric?: boolean;
   };
-  files: Array<{ id?: string; name: string; size: number; type: string }>;
+  files: QuestionFileRecord[];
   questions: GeneratedQuestion[];
   analysis: Analysis;
   createdAt: string;
@@ -212,7 +226,7 @@ function getDocumentQuestionType(type: QuestionType) {
   return type === "Objektif" ? "Satu (1) Pilihan" : "Subjektif";
 }
 
-function getDocumentTitle(files: UploadedFile[]) {
+function getDocumentTitle(files: Array<{ name: string }>) {
   const fileName = files[0]?.name.replace(/\.[^.]+$/, "") || "Bangunkan Soalan";
   return fileName.replace(/\s+-\s*\d+$/g, "");
 }
@@ -220,6 +234,7 @@ function getDocumentTitle(files: UploadedFile[]) {
 export default function QuestionBankPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
+  const [generatedFileRecords, setGeneratedFileRecords] = useState<QuestionFileRecord[]>([]);
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([
     "Objektif",
     "Subjektif",
@@ -258,6 +273,15 @@ export default function QuestionBankPage() {
       return matchesFilter && matchesSearch;
     });
   }, [activeFilter, questions, searchTerm]);
+  const activeFileRecords: QuestionFileRecord[] = generatedFileRecords.length
+    ? generatedFileRecords
+    : uploadedFiles.map(({ id, name, size, type }) => ({
+        id,
+        name,
+        size,
+        type,
+        storage: null,
+      }));
 
   useEffect(() => {
     loadSavedDrafts();
@@ -293,6 +317,7 @@ export default function QuestionBankPage() {
     );
     setGenerateAnswerScheme(draft.settings.generateAnswerScheme ?? true);
     setGenerateRubric(draft.settings.generateRubric ?? true);
+    setGeneratedFileRecords(draft.files || []);
     setUploadedFiles([]);
     setViewMode("Builder");
     setDraftMessage(`Draf ID ${draft.id} dimuat semula.`);
@@ -319,6 +344,7 @@ export default function QuestionBankPage() {
         file,
       })),
     ]);
+    setGeneratedFileRecords([]);
   }
 
   function toggleQuestionType(type: QuestionType) {
@@ -366,6 +392,7 @@ export default function QuestionBankPage() {
 
     try {
       const formData = new FormData();
+      formData.append("ownerRef", "local-user");
       formData.append(
         "settings",
         JSON.stringify({
@@ -402,10 +429,12 @@ export default function QuestionBankPage() {
       const payload = (await response.json()) as {
         questions: GeneratedQuestion[];
         analysis: Analysis;
+        files?: QuestionFileRecord[];
       };
 
       setQuestions(payload.questions);
       setAnalysis(payload.analysis);
+      setGeneratedFileRecords(payload.files || []);
       setViewMode("Builder");
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI gagal menjana soalan.");
@@ -441,16 +470,11 @@ export default function QuestionBankPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          title: getDocumentTitle(uploadedFiles),
+          title: getDocumentTitle(activeFileRecords),
           ownerRef: "local-user",
           status: "Draft",
           settings,
-          files: uploadedFiles.map(({ id, name, size, type }) => ({
-            id,
-            name,
-            size,
-            type,
-          })),
+          files: activeFileRecords,
           questions,
           analysis,
         }),
@@ -574,25 +598,34 @@ export default function QuestionBankPage() {
 
               <div className="mt-4 space-y-2">
                 <p className="text-xs font-medium text-slate-500">
-                  Fail Dimuat Naik ({uploadedFiles.length})
+                  Fail Nota ({activeFileRecords.length})
                 </p>
-                {uploadedFiles.length === 0 ? (
+                {activeFileRecords.length === 0 ? (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
                     Belum ada fail dipilih.
                   </div>
                 ) : (
-                  uploadedFiles.map((file) => (
+                  activeFileRecords.map((file) => (
                     <div
-                      key={file.id}
+                      key={file.id || file.name}
                       className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm"
                     >
                       <div className="flex min-w-0 items-center gap-2">
                         <FileText className="h-4 w-4 shrink-0 text-blue-600" />
-                        <span className="truncate font-medium text-slate-700">{file.name}</span>
+                        <span className="truncate font-medium text-slate-700">
+                          {file.name}
+                        </span>
                       </div>
-                      <span className="ml-3 shrink-0 text-xs text-slate-500">
-                        {formatFileSize(file.size)}
-                      </span>
+                      <div className="ml-3 flex shrink-0 items-center gap-2">
+                        {file.storage?.key && (
+                          <span className="rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700">
+                            S3
+                          </span>
+                        )}
+                        <span className="text-xs text-slate-500">
+                          {formatFileSize(file.size)}
+                        </span>
+                      </div>
                     </div>
                   ))
                 )}
@@ -779,7 +812,7 @@ export default function QuestionBankPage() {
                     Document Mode
                   </p>
                   <h2 className="mt-1 text-lg font-bold text-slate-900">
-                    {getDocumentTitle(uploadedFiles)}
+                    {getDocumentTitle(activeFileRecords)}
                   </h2>
                   <p className="mt-1 text-sm text-slate-600">
                     Susunan dokumen mengikut format PL: jenis soalan, keterampilan, tajuk, sub modul dan aras kesukaran.
@@ -804,7 +837,7 @@ export default function QuestionBankPage() {
                           {item.skillCategory}
                         </div>
                         <div className="border-r border-slate-300 px-3 py-3 font-semibold">
-                          {getDocumentTitle(uploadedFiles)}
+                          {getDocumentTitle(activeFileRecords)}
                         </div>
                         <div className="border-r border-slate-300 px-3 py-3 text-center font-semibold">
                           PL
@@ -1109,7 +1142,7 @@ export default function QuestionBankPage() {
               <h2 className="text-base font-bold text-slate-900">Ringkasan Tetapan</h2>
               <div className="mt-4 space-y-3 border-t border-slate-200 pt-4 text-sm">
                 {[
-                  ["Fail Nota", uploadedFiles.length ? `${uploadedFiles.length} fail` : "Belum dipilih"],
+                  ["Fail Nota", activeFileRecords.length ? `${activeFileRecords.length} fail` : "Belum dipilih"],
                   ["Jenis Soalan", questionTypes.join(", ") || "-"],
                   ["Jumlah Soalan", String(totalQuestions)],
                   ["Objektif", questionTypes.includes("Objektif") ? String(objectiveCount) : "0"],
