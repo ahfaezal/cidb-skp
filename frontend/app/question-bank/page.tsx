@@ -265,6 +265,49 @@ function getDocumentTitle(files: Array<{ name: string }>) {
   return fileName.replace(/\s+-\s*\d+$/g, "");
 }
 
+function splitOption(option: string) {
+  const match = option.match(/^([A-D])\.\s*(.*)$/i);
+  return {
+    label: match?.[1]?.toUpperCase() || "",
+    text: (match?.[2] || option).trim(),
+  };
+}
+
+function normalizeObjectiveOptions(question: GeneratedQuestion): GeneratedQuestion {
+  if (question.type !== "Objektif" || !question.options?.length) {
+    return question;
+  }
+
+  const parsed = question.options.map((option, index) => ({
+    ...splitOption(option),
+    fallbackLabel: String.fromCharCode(65 + index),
+  }));
+  const correctText = parsed.find(
+    (option) =>
+      option.label === question.correctAnswer ||
+      option.fallbackLabel === question.correctAnswer,
+  )?.text;
+  const sorted = [...parsed].sort((a, b) => {
+    const lengthDiff = a.text.length - b.text.length;
+    return lengthDiff || a.text.localeCompare(b.text);
+  });
+  const labels = ["A", "B", "C", "D"];
+  const nextOptions = sorted.map((option, index) => `${labels[index]}. ${option.text}`);
+  const nextCorrectIndex = correctText
+    ? sorted.findIndex((option) => option.text === correctText)
+    : -1;
+
+  return {
+    ...question,
+    options: nextOptions,
+    correctAnswer: nextCorrectIndex >= 0 ? labels[nextCorrectIndex] : question.correctAnswer,
+  };
+}
+
+function normalizeQuestions(items: GeneratedQuestion[]) {
+  return items.map(normalizeObjectiveOptions);
+}
+
 export default function QuestionBankPage() {
   const { authHeaders, user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -293,6 +336,8 @@ export default function QuestionBankPage() {
   const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
   const [error, setError] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
+  const [editingQuestionId, setEditingQuestionId] = useState("");
+  const [editingQuestion, setEditingQuestion] = useState<GeneratedQuestion | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     if (typeof window === "undefined") {
       return defaultUserProfile;
@@ -394,7 +439,7 @@ export default function QuestionBankPage() {
   }
 
   function loadDraft(draft: SavedQuestionDraft) {
-    setQuestions(draft.questions);
+    setQuestions(normalizeQuestions(draft.questions));
     setAnalysis(draft.analysis || initialAnalysis);
     setQuestionTypes(draft.settings.questionTypes?.length ? draft.settings.questionTypes : questionTypeOptions);
     setObjectiveCount(draft.settings.objectiveCount ?? 0);
@@ -482,7 +527,7 @@ export default function QuestionBankPage() {
 
     try {
       const formData = new FormData();
-      formData.append("ownerRef", userProfile.ownerRef);
+      formData.append("ownerRef", effectiveUserProfile.ownerRef);
       formData.append(
         "settings",
         JSON.stringify({
@@ -523,7 +568,7 @@ export default function QuestionBankPage() {
         files?: QuestionFileRecord[];
       };
 
-      setQuestions(payload.questions);
+      setQuestions(normalizeQuestions(payload.questions));
       setAnalysis(payload.analysis);
       setGeneratedFileRecords(payload.files || []);
       setViewMode("Builder");
@@ -563,15 +608,15 @@ export default function QuestionBankPage() {
         },
         body: JSON.stringify({
           title: getDocumentTitle(activeFileRecords),
-          ownerRef: user ? String(user.id) : userProfile.ownerRef,
-          ownerName: user?.name || userProfile.ownerName,
-          ownerRole: user?.role || userProfile.ownerRole,
-          projectRef: user?.projectRef || userProfile.projectRef,
+          ownerRef: user ? String(user.id) : effectiveUserProfile.ownerRef,
+          ownerName: user?.name || effectiveUserProfile.ownerName,
+          ownerRole: user?.role || effectiveUserProfile.ownerRole,
+          projectRef: user?.projectRef || effectiveUserProfile.projectRef,
           visibility: draftScope === "project" ? "Project" : "Private",
           status: "Draft",
           settings,
           files: activeFileRecords,
-          questions,
+          questions: normalizeQuestions(questions),
           analysis,
         }),
       });
@@ -591,26 +636,146 @@ export default function QuestionBankPage() {
     }
   }
 
-  function regenerateQuestion(id: string) {
+  function startEditQuestion(item: GeneratedQuestion) {
+    if (item.locked) {
+      setError("Soalan dikunci. Buka lock sebelum edit.");
+      return;
+    }
+
+    setError("");
+    setEditingQuestionId(item.id);
+    setEditingQuestion({
+      ...item,
+      options: item.options ? [...item.options] : [],
+      answerScheme: Array.isArray(item.answerScheme)
+        ? [...item.answerScheme]
+        : item.answerScheme || "",
+      rubric: item.rubric ? item.rubric.map((rubric) => ({ ...rubric })) : [],
+    });
+  }
+
+  function updateEditingQuestion(changes: Partial<GeneratedQuestion>) {
+    setEditingQuestion((current) => (current ? { ...current, ...changes } : current));
+  }
+
+  function updateEditingOption(index: number, value: string) {
+    setEditingQuestion((current) => {
+      if (!current) return current;
+      const options = [...(current.options || [])];
+      const label = String.fromCharCode(65 + index);
+      const text = splitOption(value).text;
+      options[index] = `${label}. ${text}`;
+      return { ...current, options };
+    });
+  }
+
+  function saveEditedQuestion() {
+    if (!editingQuestion || !editingQuestionId) return;
+
+    const normalized = normalizeObjectiveOptions(editingQuestion);
     setQuestions((current) =>
-      current.map((item) =>
-        item.id === id && !item.locked
-          ? {
-              ...item,
-              rationale:
-                item.rationale ||
-                "Soalan ini dijana semula berdasarkan tetapan semasa dan topik nota.",
-            }
-          : item
-      )
+      current.map((item) => (item.id === editingQuestionId ? normalized : item)),
     );
+    setEditingQuestion(null);
+    setEditingQuestionId("");
+    setDraftMessage("Soalan berjaya dikemaskini. Tekan Simpan Draf untuk simpan ke database.");
+  }
+
+  function cancelEditQuestion() {
+    setEditingQuestion(null);
+    setEditingQuestionId("");
+  }
+
+  async function regenerateQuestion(id: string) {
+    setError("");
+    setDraftMessage("");
+
+    const original = questions.find((item) => item.id === id);
+    if (!original || original.locked) {
+      setError("Soalan dikunci. Buka lock sebelum regenerate.");
+      return;
+    }
+
+    if (uploadedFiles.length === 0) {
+      setError("Regenerate perlukan fail nota asal. Muat naik nota semula jika draf dimuat daripada database.");
+      return;
+    }
+
+    setIsGenerating(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("ownerRef", effectiveUserProfile.ownerRef);
+      formData.append(
+        "settings",
+        JSON.stringify({
+          files: uploadedFiles.map(({ id: fileId, name, size, type }) => ({
+            id: fileId,
+            name,
+            size,
+            type,
+          })),
+          questionTypes: [original.type],
+          objectiveCount: original.type === "Objektif" ? 1 : 0,
+          subjectiveCount: original.type === "Subjektif" ? 1 : 0,
+          skillCategories: [original.skillCategory],
+          difficultyLevels: [original.difficulty],
+          generateAnswerScheme,
+          generateRubric,
+        }),
+      );
+
+      uploadedFiles.forEach((file) => {
+        formData.append("files", file.file, file.name);
+      });
+
+      const response = await fetch(`${API_BASE_URL}/question-builder/generate`, {
+        method: "POST",
+        headers: authHeaders(),
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(getGenerationErrorMessage(payload));
+      }
+
+      const payload = (await response.json()) as {
+        questions: GeneratedQuestion[];
+        analysis?: Analysis;
+      };
+      const nextQuestion = payload.questions[0];
+      if (!nextQuestion) {
+        throw new Error("AI tidak memulangkan soalan gantian.");
+      }
+      const replacement = normalizeObjectiveOptions(nextQuestion);
+
+      setQuestions((current) =>
+        current.map((item) => (item.id === id ? { ...replacement, id } : item)),
+      );
+      setDraftMessage("Soalan berjaya dijana semula. Tekan Simpan Draf untuk simpan ke database.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Regenerate soalan gagal.");
+    } finally {
+      setIsGenerating(false);
+    }
   }
 
   function deleteQuestion(id: string) {
-    setQuestions((current) => current.filter((item) => item.id !== id));
+    const target = questions.find((item) => item.id === id);
+    if (target?.locked) {
+      setError("Soalan dikunci. Buka lock sebelum delete.");
+      return;
+    }
+
+    setError("");
+    setQuestions((current) =>
+      current.filter((item) => item.id !== id).map((item, index) => ({ ...item, id: `q${index + 1}` })),
+    );
   }
 
   function toggleLock(id: string) {
+    setError("");
     setQuestions((current) =>
       current.map((item) =>
         item.id === id ? { ...item, locked: !item.locked } : item
@@ -1134,27 +1299,36 @@ export default function QuestionBankPage() {
                       </div>
 
                       <div className="flex gap-2 text-slate-500">
-                        <button title="Edit" className="rounded-lg p-2 hover:bg-slate-100">
+                        <button
+                          title="Edit"
+                          onClick={() => startEditQuestion(item)}
+                          disabled={item.locked}
+                          className="rounded-lg p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
                           <Edit3 className="h-4 w-4" />
                         </button>
                         <button
                           title="Regenerate"
                           onClick={() => regenerateQuestion(item.id)}
-                          className="rounded-lg p-2 hover:bg-slate-100"
+                          disabled={item.locked || isGenerating}
+                          className="rounded-lg p-2 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <RefreshCw className="h-4 w-4" />
                         </button>
                         <button
                           title="Delete"
                           onClick={() => deleteQuestion(item.id)}
-                          className="rounded-lg p-2 hover:bg-red-50 hover:text-red-600"
+                          disabled={item.locked}
+                          className="rounded-lg p-2 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
                         <button
-                          title="Lock"
+                          title={item.locked ? "Unlock" : "Lock"}
                           onClick={() => toggleLock(item.id)}
-                          className="rounded-lg p-2 hover:bg-blue-50 hover:text-blue-600"
+                          className={`rounded-lg p-2 hover:bg-blue-50 hover:text-blue-600 ${
+                            item.locked ? "bg-blue-50 text-blue-600" : ""
+                          }`}
                         >
                           <Lock className="h-4 w-4" />
                         </button>
@@ -1163,34 +1337,132 @@ export default function QuestionBankPage() {
 
                     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_220px]">
                       <div>
-                        <p className="text-sm font-medium leading-7 text-slate-800">
-                          {item.question}
-                        </p>
+                        {editingQuestionId === item.id && editingQuestion ? (
+                          <div className="space-y-4 rounded-2xl border border-blue-200 bg-blue-50/40 p-4">
+                            <label className="block text-xs font-bold text-slate-700">
+                              Soalan
+                              <textarea
+                                value={editingQuestion.question}
+                                onChange={(event) =>
+                                  updateEditingQuestion({ question: event.target.value })
+                                }
+                                className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 outline-none focus:border-blue-400"
+                              />
+                            </label>
 
-                        {item.type === "Objektif" && item.options?.length ? (
-                          <div className="mt-4 space-y-3">
-                            {item.options.map((option) => (
-                              <div key={option} className="flex items-center gap-3 text-sm text-slate-700">
-                                <span
-                                  className={`h-4 w-4 rounded-full border ${
-                                    option.startsWith(`${item.correctAnswer}.`)
-                                      ? "border-green-500 bg-green-500"
-                                      : "border-slate-300"
-                                  }`}
-                                />
-                                {option}
+                            {editingQuestion.type === "Objektif" && (
+                              <div className="grid gap-3">
+                                <p className="text-xs font-bold text-slate-700">
+                                  Pilihan jawapan, sistem akan susun semula dari pendek ke panjang apabila disimpan.
+                                </p>
+                                {(editingQuestion.options || []).map((option, optionIndex) => (
+                                  <label
+                                    key={`${editingQuestion.id}-option-${optionIndex}`}
+                                    className="grid gap-2 text-xs font-bold text-slate-700"
+                                  >
+                                    Pilihan {String.fromCharCode(65 + optionIndex)}
+                                    <input
+                                      value={splitOption(option).text}
+                                      onChange={(event) =>
+                                        updateEditingOption(optionIndex, event.target.value)
+                                      }
+                                      className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                                    />
+                                  </label>
+                                ))}
+                                <label className="block text-xs font-bold text-slate-700">
+                                  Jawapan betul
+                                  <select
+                                    value={editingQuestion.correctAnswer || "A"}
+                                    onChange={(event) =>
+                                      updateEditingQuestion({ correctAnswer: event.target.value })
+                                    }
+                                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold outline-none focus:border-blue-400"
+                                  >
+                                    {["A", "B", "C", "D"].map((label) => (
+                                      <option key={label}>{label}</option>
+                                    ))}
+                                  </select>
+                                </label>
                               </div>
-                            ))}
+                            )}
+
+                            <label className="block text-xs font-bold text-slate-700">
+                              Rasional
+                              <textarea
+                                value={editingQuestion.rationale || ""}
+                                onChange={(event) =>
+                                  updateEditingQuestion({ rationale: event.target.value })
+                                }
+                                className="mt-2 min-h-20 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 outline-none focus:border-blue-400"
+                              />
+                            </label>
+
+                            <label className="block text-xs font-bold text-slate-700">
+                              Skema Jawapan
+                              <textarea
+                                value={toList(editingQuestion.answerScheme).join("\n")}
+                                onChange={(event) =>
+                                  updateEditingQuestion({
+                                    answerScheme: event.target.value
+                                      .split("\n")
+                                      .map((line) => line.trim())
+                                      .filter(Boolean),
+                                  })
+                                }
+                                className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-6 outline-none focus:border-blue-400"
+                              />
+                            </label>
+
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={saveEditedQuestion}
+                                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+                              >
+                                Simpan Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelEditQuestion}
+                                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                              >
+                                Batal
+                              </button>
+                            </div>
                           </div>
                         ) : (
-                          <div className="mt-4 rounded-xl bg-slate-50 p-4">
-                            <p className="text-xs font-bold text-slate-700">Skema Jawapan</p>
-                            <ul className="mt-2 space-y-1 text-sm text-slate-600">
-                              {toList(item.answerScheme).map((scheme) => (
-                                <li key={scheme}>- {scheme}</li>
-                              ))}
-                            </ul>
-                          </div>
+                          <>
+                            <p className="text-sm font-medium leading-7 text-slate-800">
+                              {item.question}
+                            </p>
+
+                            {item.type === "Objektif" && item.options?.length ? (
+                              <div className="mt-4 space-y-3">
+                                {item.options.map((option) => (
+                                  <div key={option} className="flex items-center gap-3 text-sm text-slate-700">
+                                    <span
+                                      className={`h-4 w-4 rounded-full border ${
+                                        option.startsWith(`${item.correctAnswer}.`)
+                                          ? "border-green-500 bg-green-500"
+                                          : "border-slate-300"
+                                      }`}
+                                    />
+                                    {option}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-4 rounded-xl bg-slate-50 p-4">
+                                <p className="text-xs font-bold text-slate-700">Skema Jawapan</p>
+                                <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                                  {toList(item.answerScheme).map((scheme) => (
+                                    <li key={scheme}>- {scheme}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </>
                         )}
 
                         {item.correctAnswer && (
@@ -1317,9 +1589,9 @@ export default function QuestionBankPage() {
               <h2 className="text-base font-bold text-slate-900">Ringkasan Tetapan</h2>
               <div className="mt-4 space-y-3 border-t border-slate-200 pt-4 text-sm">
                 {[
-                  ["Pengguna", userProfile.ownerName || "-"],
-                  ["Peranan", userProfile.ownerRole],
-                  ["Projek", userProfile.projectRef || "-"],
+                  ["Pengguna", effectiveUserProfile.ownerName || "-"],
+                  ["Peranan", effectiveUserProfile.ownerRole],
+                  ["Projek", effectiveUserProfile.projectRef || "-"],
                   ["Fail Nota", activeFileRecords.length ? `${activeFileRecords.length} fail` : "Belum dipilih"],
                   ["Jenis Soalan", questionTypes.join(", ") || "-"],
                   ["Jumlah Soalan", String(totalQuestions)],
@@ -1348,7 +1620,7 @@ export default function QuestionBankPage() {
                 >
                   <option value="mine">Draf saya sahaja</option>
                   <option value="project">Semua draf projek ini</option>
-                  <option value="all" disabled={userProfile.ownerRole !== "Super Admin"}>
+                  <option value="all" disabled={effectiveUserProfile.ownerRole !== "Super Admin"}>
                     Semua draf sistem
                   </option>
                 </select>
@@ -1359,7 +1631,7 @@ export default function QuestionBankPage() {
                 >
                   Muat Semula Draf
                 </button>
-                {draftScope === "all" && userProfile.ownerRole !== "Super Admin" ? (
+                {draftScope === "all" && effectiveUserProfile.ownerRole !== "Super Admin" ? (
                   <p className="text-xs font-semibold text-red-600">
                     Paparan semua draf hanya untuk Super Admin.
                   </p>

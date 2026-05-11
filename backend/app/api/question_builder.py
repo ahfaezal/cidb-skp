@@ -251,6 +251,7 @@ Peraturan wajib:
 - Setiap soalan mesti mempunyai satu skillCategory daripada keterampilan yang dipilih sahaja.
 - Setiap soalan mesti mempunyai satu difficulty daripada aras yang dipilih sahaja.
 - Soalan objektif mesti ada 4 pilihan A-D, correctAnswer, rationale ringkas dan answerScheme jika diminta.
+- Pilihan jawapan objektif mesti disusun daripada teks paling pendek kepada paling panjang. Label A-D mesti ikut susunan baharu dan correctAnswer mesti merujuk label baharu yang betul.
 - Soalan subjektif mesti ada answerScheme dalam bentuk poin utama jika diminta.
 - Rubrik hanya untuk soalan subjektif dan wajib disediakan jika generateRubric ialah Ya.
 - Jika nota tidak cukup untuk menjana soalan berkualiti, pulangkan JSON dengan questions kosong dan analysis.detectedTopics yang menerangkan isu tersebut.
