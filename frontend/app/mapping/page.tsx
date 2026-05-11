@@ -121,6 +121,26 @@ type GeneratedBlock = {
   groupId?: string;
 };
 
+type SavedGrouping = {
+  id: number;
+  trade_id: number;
+  cmcs_id?: number | null;
+  source_code: string;
+  source_title: string;
+  module_title: string;
+  module_objective?: string;
+  groups_json: string;
+  status: string;
+  module_id?: number | null;
+};
+
+type GroupingPayload = {
+  groupId: string;
+  title: string;
+  subtitle: string;
+  blocks: GeneratedBlock[];
+};
+
 function getTradeLabel(trade: Trade) {
   return `${trade.code} - ${trade.title}`;
 }
@@ -521,6 +541,8 @@ export default function MappingPage() {
   const [aiDraft, setAiDraft] = useState<MappingAIDraft | null>(null);
   const [generatedBlocks, setGeneratedBlocks] = useState<GeneratedBlock[]>([]);
   const [blockGroups, setBlockGroups] = useState<Record<string, string>>({});
+  const [savedGroupings, setSavedGroupings] = useState<SavedGrouping[]>([]);
+  const [editingGroupingId, setEditingGroupingId] = useState<number | null>(null);
   const [generatingAI, setGeneratingAI] = useState(false);
   const [savingWorkspace, setSavingWorkspace] = useState(false);
   const [workspaceMessage, setWorkspaceMessage] = useState("");
@@ -543,6 +565,16 @@ export default function MappingPage() {
 
     return [...groups.entries()];
   }, [blockGroups, generatedBlocks]);
+  const currentGroupingPayload = useMemo<GroupingPayload[]>(
+    () =>
+      groupedBlocks.map(([groupId, blocks], index) => ({
+        groupId,
+        title: blocks[0]?.title || `Group ${index + 1}`,
+        subtitle: blocks[0]?.subtitle || "",
+        blocks,
+      })),
+    [groupedBlocks],
+  );
   const useSampleMatrix =
     selectedTrade?.code === "RWY" ||
     selectedTrade?.code === "E13" ||
@@ -757,6 +789,54 @@ export default function MappingPage() {
     );
   }
 
+  function loadSavedGrouping(grouping: SavedGrouping) {
+    try {
+      const groups = JSON.parse(grouping.groups_json) as GroupingPayload[];
+      const nextBlocks: GeneratedBlock[] = [];
+      const nextGroups: Record<string, string> = {};
+
+      groups.forEach((group, groupIndex) => {
+        group.blocks.forEach((block, blockIndex) => {
+          const id = `saved-${grouping.id}-${groupIndex + 1}-${blockIndex + 1}`;
+          nextBlocks.push({
+            ...block,
+            id,
+            groupId: group.groupId,
+          });
+          nextGroups[id] = group.groupId;
+        });
+      });
+
+      setGeneratedBlocks(nextBlocks);
+      setBlockGroups(nextGroups);
+      setAiDraft({
+        trade_specific_content: "",
+        draft_module_title: grouping.module_title,
+        draft_objective: grouping.module_objective || "",
+        draft_content_outline: "",
+        suggested_learning_packages: "",
+        suggested_assessment_areas: "",
+        mapping_notes: "",
+      });
+      setSelectedCmcsId(grouping.cmcs_id || null);
+      setIsAdditionalMode(grouping.source_code === "TAMBAHAN");
+      setEditingGroupingId(grouping.id);
+      setWorkspaceMessage("Grouping dimuat untuk edit.");
+    } catch (err) {
+      setWorkspaceMessage("Saved grouping tidak dapat dibaca.");
+      console.error(err);
+    }
+  }
+
+  async function refreshSavedGroupings(tradeId = selectedTradeId) {
+    if (!tradeId) return;
+
+    const response = await axios.get(
+      `${API_BASE_URL}/mapping-groupings/trade/${tradeId}`,
+    );
+    setSavedGroupings(response.data);
+  }
+
   function groupBlock(blockId: string, targetGroupId?: string) {
     setBlockGroups((current) => ({
       ...current,
@@ -787,6 +867,7 @@ export default function MappingPage() {
 
       setAiDraft(response.data);
       setGeneratedBlocks(blocks);
+      setEditingGroupingId(null);
       setBlockGroups(
         Object.fromEntries(blocks.map((block) => [block.id, block.groupId || "group-1"])),
       );
@@ -821,17 +902,46 @@ export default function MappingPage() {
     setSavingWorkspace(true);
     setWorkspaceMessage("");
 
-    const groupedSummary = groupedBlocks
+    const groupedSummary = currentGroupingPayload
       .map(
-        ([groupId, blocks], index) =>
-          `Group ${index + 1} (${groupId})\n${blocks
+        (group, index) =>
+          `Group ${index + 1} (${group.groupId})\n${group.blocks
             .map((block) => `- ${block.title}`)
             .join("\n")}`,
       )
       .join("\n\n");
 
     try {
-      await axios.post(`${API_BASE_URL}/trade-cmcs-mappings/`, {
+      const groupingPayload = {
+        trade_id: selectedTradeId,
+        cmcs_id: isAdditionalMode ? null : selectedCmcsId,
+        source_code: isAdditionalMode
+          ? "TAMBAHAN"
+          : selectedCmcs?.code || String(selectedCmcsId),
+        source_title: isAdditionalMode
+          ? "Additional Related Knowledge"
+          : selectedCmcs?.title || "CMCS",
+        module_title: aiDraft.draft_module_title || currentGroupingPayload[0]?.title,
+        module_objective: aiDraft.draft_objective,
+        groups_json: JSON.stringify(currentGroupingPayload),
+        status: "Saved",
+      };
+
+      if (editingGroupingId) {
+        await axios.put(
+          `${API_BASE_URL}/mapping-groupings/${editingGroupingId}`,
+          groupingPayload,
+        );
+      } else {
+        const savedResponse = await axios.post(
+          `${API_BASE_URL}/mapping-groupings/`,
+          groupingPayload,
+        );
+        setEditingGroupingId(savedResponse.data.id);
+      }
+
+      try {
+        await axios.post(`${API_BASE_URL}/trade-cmcs-mappings/`, {
         trade_id: selectedTradeId,
         cmcs_id: saveCmcsId,
         competency_unit_id: null,
@@ -853,7 +963,10 @@ export default function MappingPage() {
           .join("\n\n"),
         suggested_learning_packages: groupedSummary,
         suggested_assessment_areas: aiDraft.suggested_assessment_areas,
-      });
+        });
+      } catch {
+        // Mapping may already exist; persisted grouping remains the source of truth.
+      }
 
       setWorkspaceMessage("Mapping dan grouping berjaya disimpan.");
       setSavedMatrixRows((current) => ({
@@ -865,6 +978,7 @@ export default function MappingPage() {
         `${API_BASE_URL}/trade-cmcs-mappings/trade/${selectedTradeId}`,
       );
       setMappings(mappingResponse.data);
+      await refreshSavedGroupings(selectedTradeId);
     } catch (err) {
       setWorkspaceMessage(
         "Save gagal. Mapping mungkin sudah wujud untuk CMCS ini.",
@@ -872,6 +986,25 @@ export default function MappingPage() {
       console.error(err);
     } finally {
       setSavingWorkspace(false);
+    }
+  }
+
+  async function sendGroupingToModuleBuilder(groupingId: number) {
+    setWorkspaceMessage("");
+
+    try {
+      const response = await axios.post(
+        `${API_BASE_URL}/mapping-groupings/${groupingId}/send-to-module-builder`,
+      );
+      await refreshSavedGroupings();
+      setWorkspaceMessage("Grouping dihantar ke Module Builder.");
+
+      if (response.data.module_id) {
+        setModules((current) => current);
+      }
+    } catch (err) {
+      setWorkspaceMessage("Gagal hantar grouping ke Module Builder.");
+      console.error(err);
     }
   }
 
@@ -1002,9 +1135,10 @@ export default function MappingPage() {
     let cancelled = false;
 
     async function loadMappingWorkspace() {
-      const [mappingResponse, moduleResponse] = await Promise.all([
+      const [mappingResponse, moduleResponse, groupingResponse] = await Promise.all([
         axios.get(`${API_BASE_URL}/trade-cmcs-mappings/trade/${selectedTradeId}`),
         axios.get(`${API_BASE_URL}/skp-modules/trade/${selectedTradeId}`),
+        axios.get(`${API_BASE_URL}/mapping-groupings/trade/${selectedTradeId}`),
       ]);
 
       const packageResponses = await Promise.all(
@@ -1017,6 +1151,7 @@ export default function MappingPage() {
         setMappings(mappingResponse.data);
         setModules(moduleResponse.data);
         setPackages(packageResponses.flatMap((response) => response.data));
+        setSavedGroupings(groupingResponse.data);
       }
     }
 
@@ -1366,13 +1501,73 @@ export default function MappingPage() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="border-b border-slate-200 px-5 py-4">
+                <h3 className="font-bold text-slate-900">Saved Grouping</h3>
+              </div>
+              <div className="divide-y divide-slate-200">
+                {savedGroupings.length === 0 ? (
+                  <p className="p-5 text-sm text-slate-500">
+                    Belum ada grouping yang disimpan.
+                  </p>
+                ) : (
+                  savedGroupings.map((grouping) => (
+                    <div key={grouping.id} className="space-y-3 p-5">
+                      <div>
+                        <p className="text-xs font-bold uppercase text-blue-600">
+                          {grouping.source_code}
+                        </p>
+                        <h4 className="mt-1 font-bold text-slate-900">
+                          {grouping.module_title}
+                        </h4>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {grouping.status}
+                        </p>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => loadSavedGrouping(grouping)}
+                          className="rounded-lg bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => sendGroupingToModuleBuilder(grouping.id)}
+                          className="rounded-lg bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          Send to Module Builder
+                        </button>
+
+                        {grouping.module_id && (
+                          <Link
+                            href={`/module-builder/${grouping.module_id}`}
+                            className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-200"
+                          >
+                            Open Module
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
             <button
               type="button"
               onClick={saveMappingWorkspace}
               disabled={savingWorkspace || generatedBlocks.length === 0}
               className="w-full rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {savingWorkspace ? "Menyimpan..." : "Save Mapping & Grouping"}
+              {savingWorkspace
+                ? "Menyimpan..."
+                : editingGroupingId
+                  ? "Update Mapping & Grouping"
+                  : "Save Mapping & Grouping"}
             </button>
 
             <Link

@@ -6,6 +6,7 @@ from app.db.database import engine, Base
 from app.api.assessment_questions import router as assessment_questions_router
 from app.api.cmcs import router as cmcs_router
 from app.api.learning_packages import router as learning_packages_router
+from app.api.mapping_groupings import router as mapping_groupings_router
 from app.api.module_content_blocks import router as module_content_blocks_router
 from app.api.review_records import router as review_records_router
 from app.api.skp_modules import router as skp_modules_router
@@ -17,6 +18,7 @@ from app.api.workflow_assignments import router as workflow_assignments_router
 from app.models.assessment_question import AssessmentQuestion
 from app.models.cmcs import CMCS
 from app.models.learning_package import LearningPackage
+from app.models.mapping_grouping import MappingGrouping
 from app.models.module_content_block import ModuleContentBlock
 from app.models.review_record import ReviewRecord
 from app.models.skp_module import SKPModule
@@ -104,6 +106,7 @@ app.include_router(trade_competencies_router)
 app.include_router(workflow_assignments_router)
 app.include_router(review_records_router)
 app.include_router(module_content_blocks_router)
+app.include_router(mapping_groupings_router)
 app.include_router(skp_modules_router)
 app.include_router(learning_packages_router)
 app.include_router(assessment_questions_router)
