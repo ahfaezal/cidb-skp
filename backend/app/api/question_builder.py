@@ -14,7 +14,9 @@ from sqlalchemy.orm import Session
 
 from app.db.database import SessionLocal
 from app.models.question_builder_draft import QuestionBuilderDraft
+from app.models.user import User
 from app.api.trade_cmcs_mappings import extract_response_text
+from app.services.auth_service import get_current_user
 from app.services.s3_storage import upload_question_file
 
 router = APIRouter(
@@ -348,6 +350,7 @@ async def generate_questions(
     settings: str = Form(...),
     ownerRef: str = Form("local-user"),
     files: Optional[List[UploadFile]] = File(None),
+    current_user: User = Depends(get_current_user),
 ):
     api_key = os.getenv("OPENAI_API_KEY")
 
@@ -372,7 +375,7 @@ async def generate_questions(
 
     parsed_settings = normalize_settings(parsed_settings)
     try:
-        file_content, file_records = await build_file_content(files, ownerRef)
+        file_content, file_records = await build_file_content(files, str(current_user.id))
     except HTTPException:
         raise
     except Exception as exc:
@@ -452,16 +455,17 @@ def get_question_builder_drafts(
     ownerRole: str = "Fasilitator",
     projectRef: str = "General",
     scope: str = "mine",
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     query = db.query(QuestionBuilderDraft)
 
-    if scope == "all" and ownerRole == "Super Admin":
+    if scope == "all" and current_user.role == "Super Admin":
         pass
     elif scope == "project":
-        query = query.filter(QuestionBuilderDraft.project_ref == projectRef)
+        query = query.filter(QuestionBuilderDraft.project_ref == current_user.project_ref)
     else:
-        query = query.filter(QuestionBuilderDraft.owner_ref == ownerRef)
+        query = query.filter(QuestionBuilderDraft.owner_ref == str(current_user.id))
 
     drafts = query.order_by(
         QuestionBuilderDraft.updated_at.desc(),
@@ -472,7 +476,11 @@ def get_question_builder_drafts(
 
 
 @router.get("/drafts/{draft_id}", response_model=QuestionBuilderDraftResponse)
-def get_question_builder_draft(draft_id: int, db: Session = Depends(get_db)):
+def get_question_builder_draft(
+    draft_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     draft = (
         db.query(QuestionBuilderDraft)
         .filter(QuestionBuilderDraft.id == draft_id)
@@ -482,12 +490,21 @@ def get_question_builder_draft(draft_id: int, db: Session = Depends(get_db)):
     if not draft:
         raise HTTPException(status_code=404, detail="Draf soalan tidak ditemui.")
 
+    can_view = (
+        current_user.role == "Super Admin"
+        or draft.owner_ref == str(current_user.id)
+        or draft.project_ref == current_user.project_ref
+    )
+    if not can_view:
+        raise HTTPException(status_code=403, detail="Akses draf tidak dibenarkan.")
+
     return draft_to_response(draft)
 
 
 @router.post("/drafts")
 def save_question_builder_draft(
     data: QuestionBuilderDraftCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     if not data.questions:
@@ -495,10 +512,10 @@ def save_question_builder_draft(
 
     draft = QuestionBuilderDraft(
         title=data.title.strip() or "Draf Soalan",
-        owner_ref=data.ownerRef.strip() or "local-user",
-        owner_name=data.ownerName.strip() or "Pengguna",
-        owner_role=data.ownerRole.strip() or "Fasilitator",
-        project_ref=data.projectRef.strip() or "General",
+        owner_ref=str(current_user.id),
+        owner_name=current_user.name,
+        owner_role=current_user.role,
+        project_ref=current_user.project_ref,
         visibility=data.visibility.strip() or "Private",
         status=data.status,
         settings_json=json.dumps(data.settings, ensure_ascii=False),

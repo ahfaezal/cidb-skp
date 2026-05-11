@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 
-from app.db.database import engine, Base
+from app.db.database import engine, Base, SessionLocal
+from app.api.auth import router as auth_router
 from app.api.assessment_questions import router as assessment_questions_router
 from app.api.cmcs import router as cmcs_router
 from app.api.learning_packages import router as learning_packages_router
@@ -41,6 +42,8 @@ from app.api.performance_criteria_items import router as performance_criteria_it
 from app.models.performance_criteria_item import PerformanceCriteriaItem
 from app.api.question_builder import router as question_builder_router
 from app.models.question_builder_draft import QuestionBuilderDraft
+from app.models.user import User
+from app.services.auth_service import hash_password
 
 Base.metadata.create_all(bind=engine)
 
@@ -122,6 +125,58 @@ def ensure_question_builder_draft_columns():
 
 ensure_question_builder_draft_columns()
 
+
+def ensure_users_columns():
+    inspector = inspect(engine)
+    existing_columns = {
+        column["name"]
+        for column in inspector.get_columns("users")
+    }
+    required_columns = {
+        "project_ref": "VARCHAR(255) NOT NULL DEFAULT 'SKP-CIDB'",
+        "is_active": "BOOLEAN NOT NULL DEFAULT TRUE",
+    }
+
+    missing_columns = [
+        (name, column_type)
+        for name, column_type in required_columns.items()
+        if name not in existing_columns
+    ]
+
+    if not missing_columns:
+        return
+
+    with engine.begin() as connection:
+        for name, column_type in missing_columns:
+            connection.execute(
+                text(f"ALTER TABLE users ADD COLUMN {name} {column_type}")
+            )
+
+
+ensure_users_columns()
+
+
+def seed_super_admin():
+    admin_email = "admin@skp.local"
+    admin_password = "Admin@12345"
+
+    with SessionLocal() as db:
+        if db.query(User).count() > 0:
+            return
+
+        user = User(
+            email=admin_email,
+            name="Super Admin",
+            role="Super Admin",
+            project_ref="SKP-CIDB",
+            password_hash=hash_password(admin_password),
+        )
+        db.add(user)
+        db.commit()
+
+
+seed_super_admin()
+
 app = FastAPI(
     title="SKP-CIDB Builder API"
 )
@@ -151,6 +206,7 @@ app.include_router(work_activities_router)
 app.include_router(performance_criteria_router)
 app.include_router(performance_criteria_items_router)
 app.include_router(question_builder_router)
+app.include_router(auth_router)
 
 
 @app.get("/")

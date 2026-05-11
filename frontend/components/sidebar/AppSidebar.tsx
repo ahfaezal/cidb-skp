@@ -13,7 +13,9 @@ import {
   HelpCircle,
   ImageIcon,
   FileText,
+  Users,
 } from "lucide-react";
+import { useAuth } from "@/src/lib/auth";
 
 const menuItems = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -30,6 +32,11 @@ const menuItems = [
 
 export function AppSidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const visibleMenuItems =
+    user?.role === "Super Admin"
+      ? [...menuItems, { label: "Users", href: "/users", icon: Users }]
+      : menuItems;
 
   return (
     <aside className="fixed left-0 top-0 h-screen w-72 border-r border-slate-200 bg-white px-4 py-6">
@@ -41,7 +48,7 @@ export function AppSidebar() {
       </div>
 
       <nav className="mt-8 space-y-1">
-        {menuItems.map((item) => {
+        {visibleMenuItems.map((item) => {
           const Icon = item.icon;
           const isActive =
             pathname === item.href || pathname.startsWith(`${item.href}/`);

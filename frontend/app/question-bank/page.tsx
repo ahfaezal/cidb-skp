@@ -16,6 +16,7 @@ import {
 
 import { AppShell } from "@/components/layouts/AppShell";
 import { API_BASE_URL } from "@/src/lib/api";
+import { useAuth } from "@/src/lib/auth";
 
 type QuestionType = "Objektif" | "Subjektif";
 type Difficulty = "Aras Rendah" | "Aras Sederhana" | "Aras Tinggi";
@@ -265,6 +266,7 @@ function getDocumentTitle(files: Array<{ name: string }>) {
 }
 
 export default function QuestionBankPage() {
+  const { authHeaders, user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [generatedFileRecords, setGeneratedFileRecords] = useState<QuestionFileRecord[]>([]);
@@ -333,9 +335,21 @@ export default function QuestionBankPage() {
         type,
         storage: null,
       }));
+  const effectiveUserProfile: UserProfile = useMemo(
+    () =>
+      user
+        ? {
+            ownerRef: String(user.id),
+            ownerName: user.name,
+            ownerRole: user.role,
+            projectRef: user.projectRef,
+          }
+        : userProfile,
+    [user, userProfile],
+  );
 
   const loadSavedDrafts = useCallback(async (
-    profile: UserProfile = userProfile,
+    profile: UserProfile = effectiveUserProfile,
     scope: DraftScope = draftScope,
   ) => {
     setIsLoadingDrafts(true);
@@ -349,6 +363,9 @@ export default function QuestionBankPage() {
       });
       const response = await fetch(
         `${API_BASE_URL}/question-builder/drafts?${params.toString()}`,
+        {
+          headers: authHeaders(),
+        },
       );
 
       if (!response.ok) return;
@@ -357,7 +374,7 @@ export default function QuestionBankPage() {
     } finally {
       setIsLoadingDrafts(false);
     }
-  }, [draftScope, userProfile]);
+  }, [authHeaders, draftScope, effectiveUserProfile]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -491,6 +508,7 @@ export default function QuestionBankPage() {
 
       const response = await fetch(`${API_BASE_URL}/question-builder/generate`, {
         method: "POST",
+        headers: authHeaders(),
         body: formData,
       });
 
@@ -541,13 +559,14 @@ export default function QuestionBankPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...authHeaders(),
         },
         body: JSON.stringify({
           title: getDocumentTitle(activeFileRecords),
-          ownerRef: userProfile.ownerRef,
-          ownerName: userProfile.ownerName,
-          ownerRole: userProfile.ownerRole,
-          projectRef: userProfile.projectRef,
+          ownerRef: user ? String(user.id) : userProfile.ownerRef,
+          ownerName: user?.name || userProfile.ownerName,
+          ownerRole: user?.role || userProfile.ownerRole,
+          projectRef: user?.projectRef || userProfile.projectRef,
           visibility: draftScope === "project" ? "Project" : "Private",
           status: "Draft",
           settings,
@@ -645,44 +664,52 @@ export default function QuestionBankPage() {
           <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 p-4">
               <StepTitle no={0} title="Profil Pengguna" />
+              {user && (
+                <p className="mb-3 rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700">
+                  Profil dikawal oleh akaun login.
+                </p>
+              )}
               <div className="space-y-3">
                 <label className="block text-xs font-bold text-slate-600">
                   Nama pengguna
                   <input
-                    value={userProfile.ownerName}
+                    value={effectiveUserProfile.ownerName}
+                    disabled={Boolean(user)}
                     onChange={(event) =>
                       setUserProfile((current) => ({
                         ...current,
                         ownerName: event.target.value,
                       }))
                     }
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
                   />
                 </label>
                 <label className="block text-xs font-bold text-slate-600">
                   ID pengguna
                   <input
-                    value={userProfile.ownerRef}
+                    value={effectiveUserProfile.ownerRef}
+                    disabled={Boolean(user)}
                     onChange={(event) =>
                       setUserProfile((current) => ({
                         ...current,
                         ownerRef: event.target.value,
                       }))
                     }
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
                   />
                 </label>
                 <label className="block text-xs font-bold text-slate-600">
                   Peranan
                   <select
-                    value={userProfile.ownerRole}
+                    value={effectiveUserProfile.ownerRole}
+                    disabled={Boolean(user)}
                     onChange={(event) =>
                       setUserProfile((current) => ({
                         ...current,
                         ownerRole: event.target.value as UserRole,
                       }))
                     }
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
                   >
                     {roleOptions.map((role) => (
                       <option key={role}>{role}</option>
@@ -692,19 +719,21 @@ export default function QuestionBankPage() {
                 <label className="block text-xs font-bold text-slate-600">
                   Projek / batch
                   <input
-                    value={userProfile.projectRef}
+                    value={effectiveUserProfile.projectRef}
+                    disabled={Boolean(user)}
                     onChange={(event) =>
                       setUserProfile((current) => ({
                         ...current,
                         projectRef: event.target.value,
                       }))
                     }
-                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                    className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-900 outline-none focus:border-blue-400 disabled:bg-slate-50 disabled:text-slate-500"
                   />
                 </label>
                 <button
                   type="button"
                   onClick={saveUserProfile}
+                  disabled={Boolean(user)}
                   className="w-full rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800"
                 >
                   Simpan Profil
