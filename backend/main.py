@@ -40,6 +40,7 @@ from app.models.performance_criteria import PerformanceCriteria
 from app.api.performance_criteria_items import router as performance_criteria_items_router
 from app.models.performance_criteria_item import PerformanceCriteriaItem
 from app.api.question_builder import router as question_builder_router
+from app.models.question_builder_draft import QuestionBuilderDraft
 
 Base.metadata.create_all(bind=engine)
 

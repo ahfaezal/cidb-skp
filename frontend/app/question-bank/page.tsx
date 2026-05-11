@@ -19,6 +19,7 @@ import { API_BASE_URL } from "@/src/lib/api";
 
 type QuestionType = "Objektif" | "Subjektif";
 type Difficulty = "Aras Rendah" | "Aras Sederhana" | "Aras Tinggi";
+type ViewMode = "Builder" | "Document";
 type SkillCategory =
   | "Prosedur"
   | "Fakta / Teori"
@@ -186,6 +187,15 @@ function getGenerationErrorMessage(payload: unknown) {
   return "AI gagal menjana soalan.";
 }
 
+function getDocumentQuestionType(type: QuestionType) {
+  return type === "Objektif" ? "Satu (1) Pilihan" : "Subjektif";
+}
+
+function getDocumentTitle(files: UploadedFile[]) {
+  const fileName = files[0]?.name.replace(/\.[^.]+$/, "") || "Bangunkan Soalan";
+  return fileName.replace(/\s+-\s*\d+$/g, "");
+}
+
 export default function QuestionBankPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
@@ -205,8 +215,11 @@ export default function QuestionBankPage() {
   const [analysis, setAnalysis] = useState<Analysis>(initialAnalysis);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState<"Semua" | QuestionType>("Semua");
+  const [viewMode, setViewMode] = useState<ViewMode>("Builder");
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [error, setError] = useState("");
+  const [draftMessage, setDraftMessage] = useState("");
 
   const totalQuestions =
     (questionTypes.includes("Objektif") ? objectiveCount : 0) +
@@ -270,6 +283,7 @@ export default function QuestionBankPage() {
 
   async function generateQuestions() {
     setError("");
+    setDraftMessage("");
 
     if (questionTypes.length === 0) {
       setError("Pilih sekurang-kurangnya satu jenis soalan.");
@@ -330,10 +344,67 @@ export default function QuestionBankPage() {
 
       setQuestions(payload.questions);
       setAnalysis(payload.analysis);
+      setViewMode("Builder");
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI gagal menjana soalan.");
     } finally {
       setIsGenerating(false);
+    }
+  }
+
+  async function saveDraft() {
+    setError("");
+    setDraftMessage("");
+
+    if (questions.length === 0) {
+      setError("Tiada soalan untuk disimpan sebagai draf.");
+      return;
+    }
+
+    setIsSavingDraft(true);
+
+    try {
+      const settings = {
+        questionTypes,
+        objectiveCount: questionTypes.includes("Objektif") ? objectiveCount : 0,
+        subjectiveCount: questionTypes.includes("Subjektif") ? subjectiveCount : 0,
+        skillCategories,
+        difficultyLevels,
+        generateAnswerScheme,
+        generateRubric,
+      };
+      const response = await fetch(`${API_BASE_URL}/question-builder/drafts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          title: getDocumentTitle(uploadedFiles),
+          ownerRef: "local-user",
+          status: "Draft",
+          settings,
+          files: uploadedFiles.map(({ id, name, size, type }) => ({
+            id,
+            name,
+            size,
+            type,
+          })),
+          questions,
+          analysis,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(getGenerationErrorMessage(payload));
+      }
+
+      const payload = (await response.json()) as { id: number; message: string };
+      setDraftMessage(`${payload.message} ID Draf: ${payload.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal simpan draf.");
+    } finally {
+      setIsSavingDraft(false);
     }
   }
 
@@ -382,8 +453,12 @@ export default function QuestionBankPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50">
-              Simpan Draf
+            <button
+              onClick={saveDraft}
+              disabled={isSavingDraft || questions.length === 0}
+              className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSavingDraft ? "Menyimpan..." : "Simpan Draf"}
             </button>
             <button
               onClick={() => window.location.reload()}
@@ -592,6 +667,22 @@ export default function QuestionBankPage() {
               </div>
 
               <div className="flex gap-2">
+                <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+                  {(["Builder", "Document"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setViewMode(mode)}
+                      className={`rounded-md px-3 py-1.5 text-xs font-bold ${
+                        viewMode === mode
+                          ? "bg-blue-600 text-white shadow-sm"
+                          : "text-slate-600 hover:bg-white"
+                      }`}
+                    >
+                      {mode} Mode
+                    </button>
+                  ))}
+                </div>
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input
@@ -612,8 +703,118 @@ export default function QuestionBankPage() {
                 {error}
               </div>
             )}
+            {draftMessage && (
+              <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+                {draftMessage}
+              </div>
+            )}
 
-            {isGenerating ? (
+            {viewMode === "Document" && questions.length > 0 ? (
+              <div className="overflow-hidden rounded-2xl border border-slate-300 bg-white">
+                <div className="border-b border-slate-300 bg-slate-100 px-5 py-4">
+                  <p className="text-xs font-bold uppercase tracking-wide text-blue-700">
+                    Document Mode
+                  </p>
+                  <h2 className="mt-1 text-lg font-bold text-slate-900">
+                    {getDocumentTitle(uploadedFiles)}
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Susunan dokumen mengikut format PL: jenis soalan, keterampilan, tajuk, sub modul dan aras kesukaran.
+                  </p>
+                </div>
+
+                <div className="divide-y divide-slate-300">
+                  {filteredQuestions.map((item, index) => (
+                    <div key={item.id} className="bg-white">
+                      <div className="grid grid-cols-[120px_130px_minmax(220px,1fr)_120px_130px] border-b border-slate-300 bg-slate-200 text-center text-xs font-bold uppercase text-slate-900">
+                        <div className="border-r border-slate-300 px-3 py-3">Jenis Soalan</div>
+                        <div className="border-r border-slate-300 px-3 py-3">Keterampilan</div>
+                        <div className="border-r border-slate-300 px-3 py-3">No. & Tajuk</div>
+                        <div className="border-r border-slate-300 px-3 py-3">No. Sub Modul</div>
+                        <div className="px-3 py-3">Aras Kesukaran</div>
+                      </div>
+                      <div className="grid grid-cols-[120px_130px_minmax(220px,1fr)_120px_130px] border-b border-slate-300 text-sm">
+                        <div className="border-r border-slate-300 px-3 py-3 font-semibold">
+                          {getDocumentQuestionType(item.type)}
+                        </div>
+                        <div className="border-r border-slate-300 px-3 py-3 font-semibold">
+                          {item.skillCategory}
+                        </div>
+                        <div className="border-r border-slate-300 px-3 py-3 font-semibold">
+                          {getDocumentTitle(uploadedFiles)}
+                        </div>
+                        <div className="border-r border-slate-300 px-3 py-3 text-center font-semibold">
+                          PL
+                        </div>
+                        <div className="px-3 py-3 text-center font-semibold">
+                          {item.difficulty.replace("Aras ", "")}
+                        </div>
+                      </div>
+
+                      <div className="px-5 py-4">
+                        <p className="text-sm font-semibold leading-7 text-slate-900">
+                          {index + 1}. {item.question}
+                        </p>
+                        {item.type === "Objektif" && item.options?.length ? (
+                          <div className="mt-3 grid gap-2 text-sm text-slate-800">
+                            {item.options.map((option) => (
+                              <p key={option}>{option}</p>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                            <p className="font-bold">Skema Jawapan</p>
+                            {toList(item.answerScheme).map((scheme) => (
+                              <p key={scheme} className="mt-1">- {scheme}</p>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-4 grid gap-3 border-t border-slate-200 pt-3 text-xs text-slate-700">
+                          {item.correctAnswer && (
+                            <p>
+                              <span className="font-bold">Jawapan:</span> {item.correctAnswer}
+                            </p>
+                          )}
+                          {item.rationale && (
+                            <p>
+                              <span className="font-bold">Rasional:</span> {item.rationale}
+                            </p>
+                          )}
+                          {toList(item.answerScheme).length > 0 && item.type === "Objektif" && (
+                            <div>
+                              <p className="font-bold">Skema Jawapan</p>
+                              {toList(item.answerScheme).map((scheme) => (
+                                <p key={scheme} className="mt-1">- {scheme}</p>
+                              ))}
+                            </div>
+                          )}
+                          {item.rubric?.length ? (
+                            <div className="overflow-hidden rounded-lg border border-slate-200">
+                              <div className="grid grid-cols-[1fr_80px_1.4fr] bg-slate-100 px-3 py-2 font-bold">
+                                <span>Kriteria</span>
+                                <span>Markah</span>
+                                <span>Deskripsi</span>
+                              </div>
+                              {item.rubric.map((rubric) => (
+                                <div
+                                  key={`${item.id}-${rubric.criteria}`}
+                                  className="grid grid-cols-[1fr_80px_1.4fr] border-t border-slate-200 px-3 py-2"
+                                >
+                                  <span>{rubric.criteria}</span>
+                                  <span>{rubric.marks}</span>
+                                  <span>{rubric.description}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : isGenerating ? (
               <div className="flex min-h-96 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
                 <p className="mt-3 text-sm font-semibold text-slate-800">

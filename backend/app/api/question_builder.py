@@ -8,9 +8,12 @@ from typing import List, Optional
 from xml.etree import ElementTree
 
 import httpx
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
+from app.db.database import SessionLocal
+from app.models.question_builder_draft import QuestionBuilderDraft
 from app.api.trade_cmcs_mappings import extract_response_text
 
 router = APIRouter(
@@ -39,6 +42,24 @@ class QuestionBuilderSettings(BaseModel):
     difficultyLevels: List[str]
     generateAnswerScheme: bool = True
     generateRubric: bool = True
+
+
+class QuestionBuilderDraftCreate(BaseModel):
+    title: str = "Draf Soalan"
+    ownerRef: str = "local-user"
+    status: str = "Draft"
+    settings: dict
+    files: List[dict] = Field(default_factory=list)
+    questions: List[dict]
+    analysis: dict = Field(default_factory=dict)
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
 def normalize_settings(settings: QuestionBuilderSettings):
@@ -355,3 +376,33 @@ async def generate_questions(
         ) from exc
 
     return enforce_generation_settings(result, parsed_settings)
+
+
+@router.post("/drafts")
+def save_question_builder_draft(
+    data: QuestionBuilderDraftCreate,
+    db: Session = Depends(get_db),
+):
+    if not data.questions:
+        raise HTTPException(status_code=422, detail="Tiada soalan untuk disimpan.")
+
+    draft = QuestionBuilderDraft(
+        title=data.title.strip() or "Draf Soalan",
+        owner_ref=data.ownerRef.strip() or "local-user",
+        status=data.status,
+        settings_json=json.dumps(data.settings, ensure_ascii=False),
+        files_json=json.dumps(data.files, ensure_ascii=False),
+        questions_json=json.dumps(data.questions, ensure_ascii=False),
+        analysis_json=json.dumps(data.analysis, ensure_ascii=False),
+    )
+
+    db.add(draft)
+    db.commit()
+    db.refresh(draft)
+
+    return {
+        "id": draft.id,
+        "title": draft.title,
+        "status": draft.status,
+        "message": "Draf soalan berjaya disimpan.",
+    }

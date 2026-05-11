@@ -18,6 +18,7 @@ from app.models import cmcs
 from app.models import learning_package
 from app.models import module_content_block
 from app.models import review_record
+from app.models import question_builder_draft
 from app.models import skp_module
 from app.models import trade
 from app.models import trade_cmcs_mapping
