@@ -65,9 +65,11 @@ type RubricItem = {
 type GeneratedQuestion = {
   id: string;
   type: QuestionType;
+  objectiveFormat?: "Soalan Satu (1) Pilihan" | "Soalan Aneka Gabungan";
   difficulty: Difficulty;
   skillCategory: SkillCategory;
   question: string;
+  combinationItems?: string[];
   options?: string[];
   correctAnswer?: string;
   answerScheme?: string[] | string;
@@ -94,6 +96,8 @@ type SavedQuestionDraft = {
   settings: {
     questionTypes?: QuestionType[];
     objectiveCount?: number;
+    objectiveSingleCount?: number;
+    objectiveCombinationCount?: number;
     subjectiveCount?: number;
     skillCategories?: SkillCategory[];
     difficultyLevels?: Difficulty[];
@@ -120,30 +124,16 @@ const skillOptions: SkillCategory[] = [
   "Fakta / Teori",
   "Sikap / Keselamatan / Persekitaran",
 ];
-const difficultyOptions: Array<{
-  value: Difficulty;
-  label: string;
-  taxonomy: string;
-  description: string;
-}> = [
-  {
-    value: "Aras Rendah",
-    label: "Aras Rendah",
-    taxonomy: "Pengetahuan dan Kefahaman",
-    description: "Ingat semula, istilah, fakta, turutan, memahami prinsip, menjelas dan menterjemah.",
-  },
-  {
-    value: "Aras Sederhana",
-    label: "Aras Sederhana",
-    taxonomy: "Aplikasi",
-    description: "Mengguna prinsip dalam situasi kerja, menunjuk, melakukan, membina dan menyelesaikan tugasan.",
-  },
-  {
-    value: "Aras Tinggi",
-    label: "Aras Tinggi",
-    taxonomy: "Analisis, Sintesis dan Penilaian",
-    description: "Memisah, mengkategori, mengesan, mencantum, merumus, menilai, mencadang dan mengkritik.",
-  },
+const difficultyOptions: Array<{ value: Difficulty; label: string }> = [
+  { value: "Aras Rendah", label: "Aras Rendah" },
+  { value: "Aras Sederhana", label: "Aras Sederhana" },
+  { value: "Aras Tinggi", label: "Aras Tinggi" },
+];
+const objectiveCombinationOptions = [
+  "A. I, II dan III",
+  "B. I, II dan IV",
+  "C. I, III dan IV",
+  "D. II, III dan IV",
 ];
 const roleOptions: UserRole[] = [
   "Super Admin",
@@ -293,8 +283,43 @@ function splitOption(option: string) {
   };
 }
 
+function splitRomanItem(item: string) {
+  const match = item.match(/^(I|II|III|IV)\.\s*(.*)$/i);
+  return {
+    text: (match?.[2] || item).trim(),
+  };
+}
+
+function normalizeCombinationItems(items: string[] = []) {
+  const romanLabels = ["I", "II", "III", "IV"];
+  return [...items]
+    .map(splitRomanItem)
+    .sort((a, b) => {
+      const lengthDiff = a.text.length - b.text.length;
+      return lengthDiff || a.text.localeCompare(b.text);
+    })
+    .slice(0, 4)
+    .map((item, index) => `${romanLabels[index]}. ${item.text}`);
+}
+
 function normalizeObjectiveOptions(question: GeneratedQuestion): GeneratedQuestion {
-  if (question.type !== "Objektif" || !question.options?.length) {
+  if (question.type !== "Objektif") {
+    return question;
+  }
+
+  if (
+    question.objectiveFormat === "Soalan Aneka Gabungan" ||
+    question.combinationItems?.length
+  ) {
+    return {
+      ...question,
+      objectiveFormat: "Soalan Aneka Gabungan",
+      combinationItems: normalizeCombinationItems(question.combinationItems),
+      options: objectiveCombinationOptions,
+    };
+  }
+
+  if (!question.options?.length) {
     return question;
   }
 
@@ -338,6 +363,8 @@ export default function QuestionBankPage() {
     "Subjektif",
   ]);
   const [objectiveCount, setObjectiveCount] = useState(20);
+  const [objectiveSingleCount, setObjectiveSingleCount] = useState(20);
+  const [objectiveCombinationCount, setObjectiveCombinationCount] = useState(0);
   const [subjectiveCount, setSubjectiveCount] = useState(5);
   const [skillCategories, setSkillCategories] = useState<SkillCategory[]>(skillOptions);
   const [difficultyLevels, setDifficultyLevels] = useState<Difficulty[]>(
@@ -380,6 +407,7 @@ export default function QuestionBankPage() {
   const totalQuestions =
     (questionTypes.includes("Objektif") ? objectiveCount : 0) +
     (questionTypes.includes("Subjektif") ? subjectiveCount : 0);
+  const objectiveBreakdownTotal = objectiveSingleCount + objectiveCombinationCount;
   const filteredQuestions = useMemo(() => {
     return questions.filter((item) => {
       const matchesFilter = activeFilter === "Semua" || item.type === activeFilter;
@@ -463,6 +491,10 @@ export default function QuestionBankPage() {
     setAnalysis(draft.analysis || initialAnalysis);
     setQuestionTypes(draft.settings.questionTypes?.length ? draft.settings.questionTypes : questionTypeOptions);
     setObjectiveCount(draft.settings.objectiveCount ?? 0);
+    setObjectiveSingleCount(
+      draft.settings.objectiveSingleCount ?? draft.settings.objectiveCount ?? 0,
+    );
+    setObjectiveCombinationCount(draft.settings.objectiveCombinationCount ?? 0);
     setSubjectiveCount(draft.settings.subjectiveCount ?? 0);
     setSkillCategories(draft.settings.skillCategories?.length ? draft.settings.skillCategories : skillOptions);
     setDifficultyLevels(
@@ -508,6 +540,26 @@ export default function QuestionBankPage() {
     );
   }
 
+  function updateObjectiveCount(value: number) {
+    const nextValue = Math.max(0, value);
+    const nextCombination = Math.min(objectiveCombinationCount, nextValue);
+    setObjectiveCount(nextValue);
+    setObjectiveCombinationCount(nextCombination);
+    setObjectiveSingleCount(nextValue - nextCombination);
+  }
+
+  function updateObjectiveSingleCount(value: number) {
+    const nextSingle = Math.min(Math.max(0, value), objectiveCount);
+    setObjectiveSingleCount(nextSingle);
+    setObjectiveCombinationCount(objectiveCount - nextSingle);
+  }
+
+  function updateObjectiveCombinationCount(value: number) {
+    const nextCombination = Math.min(Math.max(0, value), objectiveCount);
+    setObjectiveCombinationCount(nextCombination);
+    setObjectiveSingleCount(objectiveCount - nextCombination);
+  }
+
   function toggleSkill(category: SkillCategory) {
     setSkillCategories((current) =>
       current.includes(category)
@@ -530,6 +582,14 @@ export default function QuestionBankPage() {
 
     if (questionTypes.length === 0) {
       setError("Pilih sekurang-kurangnya satu jenis soalan.");
+      return;
+    }
+
+    if (
+      questionTypes.includes("Objektif") &&
+      objectiveBreakdownTotal !== objectiveCount
+    ) {
+      setError("Jumlah pecahan objektif mesti sama dengan jumlah soalan objektif.");
       return;
     }
 
@@ -559,6 +619,8 @@ export default function QuestionBankPage() {
           })),
           questionTypes,
           objectiveCount: questionTypes.includes("Objektif") ? objectiveCount : 0,
+          objectiveSingleCount: questionTypes.includes("Objektif") ? objectiveSingleCount : 0,
+          objectiveCombinationCount: questionTypes.includes("Objektif") ? objectiveCombinationCount : 0,
           subjectiveCount: questionTypes.includes("Subjektif") ? subjectiveCount : 0,
           skillCategories,
           difficultyLevels,
@@ -614,6 +676,8 @@ export default function QuestionBankPage() {
       const settings = {
         questionTypes,
         objectiveCount: questionTypes.includes("Objektif") ? objectiveCount : 0,
+        objectiveSingleCount: questionTypes.includes("Objektif") ? objectiveSingleCount : 0,
+        objectiveCombinationCount: questionTypes.includes("Objektif") ? objectiveCombinationCount : 0,
         subjectiveCount: questionTypes.includes("Subjektif") ? subjectiveCount : 0,
         skillCategories,
         difficultyLevels,
@@ -667,6 +731,7 @@ export default function QuestionBankPage() {
     setEditingQuestion({
       ...item,
       options: item.options ? [...item.options] : [],
+      combinationItems: item.combinationItems ? [...item.combinationItems] : [],
       answerScheme: Array.isArray(item.answerScheme)
         ? [...item.answerScheme]
         : item.answerScheme || "",
@@ -686,6 +751,16 @@ export default function QuestionBankPage() {
       const text = splitOption(value).text;
       options[index] = `${label}. ${text}`;
       return { ...current, options };
+    });
+  }
+
+  function updateEditingCombinationItem(index: number, value: string) {
+    setEditingQuestion((current) => {
+      if (!current) return current;
+      const romanLabels = ["I", "II", "III", "IV"];
+      const combinationItems = [...(current.combinationItems || [])];
+      combinationItems[index] = `${romanLabels[index]}. ${splitRomanItem(value).text}`;
+      return { ...current, combinationItems };
     });
   }
 
@@ -737,6 +812,10 @@ export default function QuestionBankPage() {
           })),
           questionTypes: [original.type],
           objectiveCount: original.type === "Objektif" ? 1 : 0,
+          objectiveSingleCount:
+            original.type === "Objektif" && original.objectiveFormat !== "Soalan Aneka Gabungan" ? 1 : 0,
+          objectiveCombinationCount:
+            original.type === "Objektif" && original.objectiveFormat === "Soalan Aneka Gabungan" ? 1 : 0,
           subjectiveCount: original.type === "Subjektif" ? 1 : 0,
           skillCategories: [original.skillCategory],
           difficultyLevels: [original.difficulty],
@@ -993,23 +1072,7 @@ export default function QuestionBankPage() {
             </div>
 
             <div className="border-b border-slate-200 p-4">
-              <StepTitle no={2} title="Jenis Soalan" />
-              <div className="grid grid-cols-2 gap-3 text-sm text-slate-700">
-                {questionTypeOptions.map((type) => (
-                  <label key={type} className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={questionTypes.includes(type)}
-                      onChange={() => toggleQuestionType(type)}
-                    />
-                    {type}
-                  </label>
-                ))}
-              </div>
-            </div>
-
-            <div className="border-b border-slate-200 p-4">
-              <StepTitle no={3} title="Jumlah Soalan" />
+              <StepTitle no={2} title="Jumlah Soalan" />
               <div className="space-y-3 text-sm">
                 <div className="flex items-center gap-3">
                   <span className="w-16 text-slate-600">Objektif</span>
@@ -1018,7 +1081,7 @@ export default function QuestionBankPage() {
                     min={0}
                     value={objectiveCount}
                     disabled={!questionTypes.includes("Objektif")}
-                    onChange={(event) => setObjectiveCount(Number(event.target.value))}
+                    onChange={(event) => updateObjectiveCount(Number(event.target.value))}
                     className="w-20 rounded-lg border border-slate-200 px-3 py-2 disabled:bg-slate-100"
                   />
                   <span className="text-slate-500">soalan</span>
@@ -1042,6 +1105,68 @@ export default function QuestionBankPage() {
             </div>
 
             <div className="border-b border-slate-200 p-4">
+              <StepTitle no={3} title="Jenis Soalan" />
+              <div className="grid gap-4 text-sm text-slate-700">
+                {questionTypeOptions.map((type) => (
+                  <div key={type} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <label className="flex items-center gap-2 font-bold text-slate-800">
+                      <input
+                        type="checkbox"
+                        checked={questionTypes.includes(type)}
+                        onChange={() => toggleQuestionType(type)}
+                      />
+                      {type}
+                    </label>
+
+                    {type === "Objektif" && questionTypes.includes("Objektif") ? (
+                      <div className="mt-3 space-y-3 border-t border-slate-100 pt-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-semibold text-slate-600">
+                            Soalan Satu (1) Pilihan
+                          </span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={objectiveCount}
+                            value={objectiveSingleCount}
+                            onChange={(event) =>
+                              updateObjectiveSingleCount(Number(event.target.value))
+                            }
+                            className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-semibold text-slate-600">
+                            Soalan Aneka Gabungan
+                          </span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={objectiveCount}
+                            value={objectiveCombinationCount}
+                            onChange={(event) =>
+                              updateObjectiveCombinationCount(Number(event.target.value))
+                            }
+                            className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                          />
+                        </div>
+                        <div
+                          className={`rounded-lg px-3 py-2 text-xs font-bold ${
+                            objectiveBreakdownTotal === objectiveCount
+                              ? "bg-green-50 text-green-700"
+                              : "bg-red-50 text-red-700"
+                          }`}
+                        >
+                          Pecahan Objektif: {objectiveBreakdownTotal} / {objectiveCount} soalan
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-b border-slate-200 p-4">
               <StepTitle no={4} title="Keterampilan Soalan" />
               <div className="grid grid-cols-2 gap-3 text-sm text-slate-700">
                 {skillOptions.map((item) => (
@@ -1060,22 +1185,14 @@ export default function QuestionBankPage() {
             <div className="border-b border-slate-200 p-4">
               <StepTitle no={5} title="Aras Soalan" />
               <div className="grid gap-3 text-sm text-slate-700">
-                {difficultyOptions.map(({ value, label, taxonomy, description }) => (
-                  <label
-                    key={value}
-                    className="grid grid-cols-[auto,minmax(0,1fr)] gap-3 rounded-xl border border-slate-200 bg-white p-3"
-                  >
+                {difficultyOptions.map(({ value, label }) => (
+                  <label key={value} className="flex items-center gap-2">
                     <input
                       type="checkbox"
                       checked={difficultyLevels.includes(value)}
                       onChange={() => toggleDifficulty(value)}
-                      className="mt-1"
                     />
-                    <span>
-                      <span className="block font-bold text-slate-900">{label}</span>
-                      <span className="block text-xs font-bold text-blue-700">{taxonomy}</span>
-                      <span className="mt-1 block text-xs leading-5 text-slate-600">{description}</span>
-                    </span>
+                    {label}
                   </label>
                 ))}
               </div>
@@ -1220,11 +1337,20 @@ export default function QuestionBankPage() {
                           {index + 1}. {item.question}
                         </p>
                         {item.type === "Objektif" && item.options?.length ? (
-                          <div className="mt-3 grid gap-2 text-sm text-slate-800">
-                            {item.options.map((option) => (
-                              <p key={option}>{option}</p>
-                            ))}
-                          </div>
+                          <>
+                            {item.objectiveFormat === "Soalan Aneka Gabungan" && item.combinationItems?.length ? (
+                              <div className="mt-3 grid gap-2 text-sm text-slate-800">
+                                {item.combinationItems.map((combinationItem) => (
+                                  <p key={combinationItem}>{combinationItem}</p>
+                                ))}
+                              </div>
+                            ) : null}
+                            <div className="mt-3 grid gap-2 text-sm text-slate-800">
+                              {item.options.map((option) => (
+                                <p key={option}>{option}</p>
+                              ))}
+                            </div>
+                          </>
                         ) : (
                           <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                             <p className="font-bold">Skema Jawapan</p>
@@ -1380,24 +1506,49 @@ export default function QuestionBankPage() {
 
                             {editingQuestion.type === "Objektif" && (
                               <div className="grid gap-3">
-                                <p className="text-xs font-bold text-slate-700">
-                                  Pilihan jawapan, sistem akan susun semula dari pendek ke panjang apabila disimpan.
-                                </p>
-                                {(editingQuestion.options || []).map((option, optionIndex) => (
-                                  <label
-                                    key={`${editingQuestion.id}-option-${optionIndex}`}
-                                    className="grid gap-2 text-xs font-bold text-slate-700"
-                                  >
-                                    Pilihan {String.fromCharCode(65 + optionIndex)}
-                                    <input
-                                      value={splitOption(option).text}
-                                      onChange={(event) =>
-                                        updateEditingOption(optionIndex, event.target.value)
-                                      }
-                                      className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
-                                    />
-                                  </label>
-                                ))}
+                                {editingQuestion.objectiveFormat === "Soalan Aneka Gabungan" ? (
+                                  <>
+                                    <p className="text-xs font-bold text-slate-700">
+                                      Item gabungan I-IV, sistem akan susun semula daripada pendek ke panjang. Pilihan A-D kekal.
+                                    </p>
+                                    {(editingQuestion.combinationItems || []).map((itemValue, itemIndex) => (
+                                      <label
+                                        key={`${editingQuestion.id}-combination-${itemIndex}`}
+                                        className="grid gap-2 text-xs font-bold text-slate-700"
+                                      >
+                                        Item {["I", "II", "III", "IV"][itemIndex]}
+                                        <input
+                                          value={splitRomanItem(itemValue).text}
+                                          onChange={(event) =>
+                                            updateEditingCombinationItem(itemIndex, event.target.value)
+                                          }
+                                          className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                                        />
+                                      </label>
+                                    ))}
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="text-xs font-bold text-slate-700">
+                                      Pilihan jawapan, sistem akan susun semula dari pendek ke panjang apabila disimpan.
+                                    </p>
+                                    {(editingQuestion.options || []).map((option, optionIndex) => (
+                                      <label
+                                        key={`${editingQuestion.id}-option-${optionIndex}`}
+                                        className="grid gap-2 text-xs font-bold text-slate-700"
+                                      >
+                                        Pilihan {String.fromCharCode(65 + optionIndex)}
+                                        <input
+                                          value={splitOption(option).text}
+                                          onChange={(event) =>
+                                            updateEditingOption(optionIndex, event.target.value)
+                                          }
+                                          className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-medium text-slate-900 outline-none focus:border-blue-400"
+                                        />
+                                      </label>
+                                    ))}
+                                  </>
+                                )}
                                 <label className="block text-xs font-bold text-slate-700">
                                   Jawapan betul
                                   <select
@@ -1467,6 +1618,15 @@ export default function QuestionBankPage() {
 
                             {item.type === "Objektif" && item.options?.length ? (
                               <div className="mt-4 space-y-3">
+                                {item.objectiveFormat === "Soalan Aneka Gabungan" && item.combinationItems?.length ? (
+                                  <div className="mb-4 space-y-2 rounded-xl bg-slate-50 p-4">
+                                    {item.combinationItems.map((combinationItem) => (
+                                      <p key={combinationItem} className="text-sm text-slate-700">
+                                        {combinationItem}
+                                      </p>
+                                    ))}
+                                  </div>
+                                ) : null}
                                 {item.options.map((option) => (
                                   <div key={option} className="flex items-center gap-3 text-sm text-slate-700">
                                     <span
@@ -1624,6 +1784,8 @@ export default function QuestionBankPage() {
                   ["Jenis Soalan", questionTypes.join(", ") || "-"],
                   ["Jumlah Soalan", String(totalQuestions)],
                   ["Objektif", questionTypes.includes("Objektif") ? String(objectiveCount) : "0"],
+                  ["Satu Pilihan", questionTypes.includes("Objektif") ? String(objectiveSingleCount) : "0"],
+                  ["Aneka Gabungan", questionTypes.includes("Objektif") ? String(objectiveCombinationCount) : "0"],
                   ["Subjektif", questionTypes.includes("Subjektif") ? String(subjectiveCount) : "0"],
                   ["Keterampilan", skillCategories.join(", ") || "-"],
                   ["Aras Soalan", difficultyLevels.join(", ") || "-"],

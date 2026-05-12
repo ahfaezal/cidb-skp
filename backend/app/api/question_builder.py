@@ -40,6 +40,8 @@ class QuestionBuilderSettings(BaseModel):
     files: List[dict] = Field(default_factory=list)
     questionTypes: List[str]
     objectiveCount: int = 0
+    objectiveSingleCount: int = 0
+    objectiveCombinationCount: int = 0
     subjectiveCount: int = 0
     skillCategories: List[str]
     difficultyLevels: List[str]
@@ -89,6 +91,10 @@ def get_db():
 def normalize_settings(settings: QuestionBuilderSettings):
     if "Objektif" not in settings.questionTypes:
         settings.objectiveCount = 0
+        settings.objectiveSingleCount = 0
+        settings.objectiveCombinationCount = 0
+    elif settings.objectiveSingleCount == 0 and settings.objectiveCombinationCount == 0:
+        settings.objectiveSingleCount = settings.objectiveCount
 
     if "Subjektif" not in settings.questionTypes:
         settings.subjectiveCount = 0
@@ -221,6 +227,16 @@ def validate_settings(settings: QuestionBuilderSettings):
     if invalid_levels:
         raise HTTPException(status_code=422, detail="Aras soalan tidak sah.")
 
+    if "Objektif" in settings.questionTypes:
+        objective_breakdown_total = (
+            settings.objectiveSingleCount + settings.objectiveCombinationCount
+        )
+        if objective_breakdown_total != settings.objectiveCount:
+            raise HTTPException(
+                status_code=422,
+                detail="Jumlah pecahan objektif mesti sama dengan jumlah soalan objektif.",
+            )
+
 
 def build_prompt(settings: QuestionBuilderSettings):
     total_questions = 0
@@ -238,7 +254,7 @@ Jangan sebut nama fail, nombor fail, "Nota PL", atau rujukan kepada fail upload 
 7 input pengguna yang wajib digunakan:
 1. Kandungan nota yang dimuat naik oleh pengguna
 2. Jenis soalan: {", ".join(settings.questionTypes)}
-3. Jumlah soalan: Objektif {settings.objectiveCount}, Subjektif {settings.subjectiveCount}, keseluruhan {total_questions}
+3. Jumlah soalan: Objektif {settings.objectiveCount} (Soalan Satu (1) Pilihan {settings.objectiveSingleCount}, Soalan Aneka Gabungan {settings.objectiveCombinationCount}), Subjektif {settings.subjectiveCount}, keseluruhan {total_questions}
 4. Keterampilan soalan: {", ".join(settings.skillCategories)}
 5. Aras soalan: {", ".join(settings.difficultyLevels)}
 6. Jana skema jawapan: {"Ya" if settings.generateAnswerScheme else "Tidak"}
@@ -263,7 +279,9 @@ Peraturan wajib:
 - Setiap soalan mesti mempunyai satu skillCategory daripada keterampilan yang dipilih sahaja.
 - Setiap soalan mesti mempunyai satu difficulty daripada aras yang dipilih sahaja.
 - Soalan objektif mesti ada 4 pilihan A-D, correctAnswer, rationale ringkas dan answerScheme jika diminta.
-- Pilihan jawapan objektif mesti disusun daripada teks paling pendek kepada paling panjang. Label A-D mesti ikut susunan baharu dan correctAnswer mesti merujuk label baharu yang betul.
+- Jana tepat {settings.objectiveSingleCount} soalan objektif dengan objectiveFormat "Soalan Satu (1) Pilihan" dan tepat {settings.objectiveCombinationCount} soalan objektif dengan objectiveFormat "Soalan Aneka Gabungan".
+- Untuk objectiveFormat "Soalan Satu (1) Pilihan", pilihan jawapan objektif mesti disusun daripada teks paling pendek kepada paling panjang. Label A-D mesti ikut susunan baharu dan correctAnswer mesti merujuk label baharu yang betul.
+- Untuk objectiveFormat "Soalan Aneka Gabungan", bina 4 item pernyataan dalam field combinationItems menggunakan label I, II, III dan IV. Susun item I-IV daripada teks paling pendek kepada paling panjang. Field options wajib kekal tepat ["A. I, II dan III", "B. I, II dan IV", "C. I, III dan IV", "D. II, III dan IV"] dan jangan ubah kedudukan pilihan A-D ini.
 - Soalan subjektif mesti ada answerScheme dalam bentuk poin utama jika diminta.
 - Rubrik hanya untuk soalan subjektif dan wajib disediakan jika generateRubric ialah Ya.
 - Jika nota tidak cukup untuk menjana soalan berkualiti, pulangkan JSON dengan questions kosong dan analysis.detectedTopics yang menerangkan isu tersebut.
@@ -274,9 +292,11 @@ Pulangkan JSON sah sahaja, tanpa Markdown, dalam format:
     {{
       "id": "q1",
       "type": "Objektif",
+      "objectiveFormat": "Soalan Satu (1) Pilihan",
       "difficulty": "Aras Rendah",
       "skillCategory": "Prosedur",
       "question": "Teks soalan",
+      "combinationItems": [],
       "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
       "correctAnswer": "A",
       "answerScheme": ["Poin skema"],
@@ -310,6 +330,14 @@ def enforce_generation_settings(result: dict, settings: QuestionBuilderSettings)
         "Subjektif": settings.subjectiveCount,
     }
     seen_counts = {"Objektif": 0, "Subjektif": 0}
+    objective_format_targets = {
+        "Soalan Satu (1) Pilihan": settings.objectiveSingleCount,
+        "Soalan Aneka Gabungan": settings.objectiveCombinationCount,
+    }
+    objective_format_seen = {
+        "Soalan Satu (1) Pilihan": 0,
+        "Soalan Aneka Gabungan": 0,
+    }
     filtered = []
 
     for question in questions:
@@ -328,6 +356,25 @@ def enforce_generation_settings(result: dict, settings: QuestionBuilderSettings)
             continue
         if seen_counts[question_type] >= target_counts[question_type]:
             continue
+        if question_type == "Objektif":
+            objective_format = question.get("objectiveFormat") or "Soalan Satu (1) Pilihan"
+            if objective_format not in objective_format_targets:
+                objective_format = "Soalan Satu (1) Pilihan"
+            if objective_format_seen[objective_format] >= objective_format_targets[objective_format]:
+                continue
+            objective_format_seen[objective_format] += 1
+            question["objectiveFormat"] = objective_format
+            if objective_format == "Soalan Aneka Gabungan":
+                question["options"] = [
+                    "A. I, II dan III",
+                    "B. I, II dan IV",
+                    "C. I, III dan IV",
+                    "D. II, III dan IV",
+                ]
+                if not isinstance(question.get("combinationItems"), list):
+                    question["combinationItems"] = []
+            else:
+                question["combinationItems"] = []
 
         seen_counts[question_type] += 1
         question["id"] = f"q{len(filtered) + 1}"
@@ -378,6 +425,7 @@ async def generate_questions(
     except Exception as exc:
         raise HTTPException(status_code=422, detail="Tetapan soalan tidak sah.") from exc
 
+    parsed_settings = normalize_settings(parsed_settings)
     validate_settings(parsed_settings)
 
     if not files:
@@ -386,7 +434,6 @@ async def generate_questions(
             detail="Sila upload sekurang-kurangnya satu fail nota.",
         )
 
-    parsed_settings = normalize_settings(parsed_settings)
     try:
         file_content, file_records = await build_file_content(files, str(current_user.id))
     except HTTPException:
