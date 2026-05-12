@@ -244,6 +244,18 @@ Jangan sebut nama fail, nombor fail, "Nota PL", atau rujukan kepada fail upload 
 6. Jana skema jawapan: {"Ya" if settings.generateAnswerScheme else "Tidak"}
 7. Jana rubrik jawapan: {"Ya" if settings.generateRubric else "Tidak"}
 
+Definisi aras soalan berasaskan Bloom Taxonomy:
+- Aras Rendah merangkumi Pengetahuan dan Kefahaman. Soalan mesti menilai ingatan semula, istilah, fakta, turutan kerja, maksud, prinsip asas, kefahaman proses, atau keupayaan menjelaskan/menghuraikan perkara asas daripada nota.
+- Aras Sederhana merangkumi Aplikasi. Soalan mesti meminta peserta menggunakan prinsip dalam situasi kerja, memilih tindakan, melakukan langkah, menyelesaikan tugasan praktikal, membina dokumen ringkas, atau menentukan penggunaan prosedur berdasarkan konteks nota.
+- Aras Tinggi merangkumi Analisis, Sintesis dan Penilaian. Soalan mesti meminta peserta memisah dan mengkategori maklumat, menganalisis punca/risiko, mengesan isu, menggabungkan beberapa elemen, merumus strategi, menilai pilihan, mencadangkan tindakan, mengkritik keputusan, atau mempertahankan justifikasi.
+
+Peraturan aras:
+- Jika Aras Rendah dipilih, jangan jadikan soalan terlalu analitikal atau berbentuk cadangan strategi.
+- Jika Aras Sederhana dipilih, soalan perlu ada konteks aplikasi kerja, bukan sekadar definisi.
+- Jika Aras Tinggi dipilih, soalan perlu memerlukan pertimbangan, analisis, sintesis atau penilaian; jangan jana soalan hafalan mudah.
+- Gunakan kata kerja yang sepadan dengan aras. Contoh Rendah: nyatakan, kenal pasti, terangkan, susun. Contoh Sederhana: gunakan, pilih, tunjukkan, laksanakan, bina. Contoh Tinggi: analisis, bandingkan, rumuskan, cadangkan, nilai, kritik, justifikasikan.
+- Pastikan difficulty setiap soalan benar-benar selari dengan definisi aras, bukan sekadar label.
+
 Peraturan wajib:
 - Jana tepat mengikut jumlah soalan yang diminta untuk jenis yang dipilih.
 - Jika jenis soalan tidak dipilih, jangan jana soalan jenis tersebut walaupun nilai count wujud dalam tetapan.

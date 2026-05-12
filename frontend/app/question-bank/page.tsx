@@ -120,10 +120,30 @@ const skillOptions: SkillCategory[] = [
   "Fakta / Teori",
   "Sikap / Keselamatan / Persekitaran",
 ];
-const difficultyOptions: Array<{ value: Difficulty; label: string }> = [
-  { value: "Aras Rendah", label: "Aras Rendah" },
-  { value: "Aras Sederhana", label: "Aras Sederhana" },
-  { value: "Aras Tinggi", label: "Aras Tinggi" },
+const difficultyOptions: Array<{
+  value: Difficulty;
+  label: string;
+  taxonomy: string;
+  description: string;
+}> = [
+  {
+    value: "Aras Rendah",
+    label: "Aras Rendah",
+    taxonomy: "Pengetahuan dan Kefahaman",
+    description: "Ingat semula, istilah, fakta, turutan, memahami prinsip, menjelas dan menterjemah.",
+  },
+  {
+    value: "Aras Sederhana",
+    label: "Aras Sederhana",
+    taxonomy: "Aplikasi",
+    description: "Mengguna prinsip dalam situasi kerja, menunjuk, melakukan, membina dan menyelesaikan tugasan.",
+  },
+  {
+    value: "Aras Tinggi",
+    label: "Aras Tinggi",
+    taxonomy: "Analisis, Sintesis dan Penilaian",
+    description: "Memisah, mengkategori, mengesan, mencantum, merumus, menilai, mencadang dan mengkritik.",
+  },
 ];
 const roleOptions: UserRole[] = [
   "Super Admin",
@@ -1040,14 +1060,22 @@ export default function QuestionBankPage() {
             <div className="border-b border-slate-200 p-4">
               <StepTitle no={5} title="Aras Soalan" />
               <div className="grid gap-3 text-sm text-slate-700">
-                {difficultyOptions.map(({ value, label }) => (
-                  <label key={value} className="flex items-center gap-2">
+                {difficultyOptions.map(({ value, label, taxonomy, description }) => (
+                  <label
+                    key={value}
+                    className="grid grid-cols-[auto,minmax(0,1fr)] gap-3 rounded-xl border border-slate-200 bg-white p-3"
+                  >
                     <input
                       type="checkbox"
                       checked={difficultyLevels.includes(value)}
                       onChange={() => toggleDifficulty(value)}
+                      className="mt-1"
                     />
-                    {label}
+                    <span>
+                      <span className="block font-bold text-slate-900">{label}</span>
+                      <span className="block text-xs font-bold text-blue-700">{taxonomy}</span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-600">{description}</span>
+                    </span>
                   </label>
                 ))}
               </div>
