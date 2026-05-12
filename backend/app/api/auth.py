@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -29,6 +29,14 @@ class UserCreate(BaseModel):
     role: str
     projectRef: str = "SKP-CIDB"
     password: str
+
+
+class UserUpdate(BaseModel):
+    email: str
+    name: str
+    role: str
+    projectRef: str = "SKP-CIDB"
+    password: Optional[str] = None
 
 
 class UserResponse(BaseModel):
@@ -67,6 +75,58 @@ def login(data: LoginRequest, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 def me(user: User = Depends(get_current_user)):
     return user_to_response(user)
+
+
+@router.put("/users/{user_id}", response_model=UserResponse)
+def update_user(
+    user_id: int,
+    data: UserUpdate,
+    _: User = Depends(require_roles("Super Admin")),
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Pengguna tidak dijumpai.")
+
+    role = data.role.strip()
+    if role not in ALLOWED_ROLES:
+        raise HTTPException(status_code=422, detail="Peranan pengguna tidak sah.")
+
+    email = data.email.lower().strip()
+    existing = db.query(User).filter(User.email == email, User.id != user_id).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Email pengguna telah wujud.")
+
+    user.email = email
+    user.name = data.name.strip()
+    user.role = role
+    user.project_ref = data.projectRef.strip() or "SKP-CIDB"
+    if data.password and data.password.strip():
+        user.password_hash = hash_password(data.password)
+
+    db.commit()
+    db.refresh(user)
+
+    return user_to_response(user)
+
+
+@router.delete("/users/{user_id}")
+def delete_user(
+    user_id: int,
+    current_user: User = Depends(require_roles("Super Admin")),
+    db: Session = Depends(get_db),
+):
+    if current_user.id == user_id:
+        raise HTTPException(status_code=422, detail="Super Admin tidak boleh remove akaun sendiri.")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Pengguna tidak dijumpai.")
+
+    db.delete(user)
+    db.commit()
+
+    return {"message": "Pengguna berjaya dibuang."}
 
 
 @router.get("/users", response_model=List[UserResponse])
