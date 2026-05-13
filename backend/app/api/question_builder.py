@@ -613,3 +613,45 @@ def save_question_builder_draft(
         "status": draft.status,
         "message": "Draf soalan berjaya disimpan.",
     }
+
+
+@router.put("/drafts/{draft_id}")
+def update_question_builder_draft(
+    draft_id: int,
+    data: QuestionBuilderDraftCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if not data.questions:
+        raise HTTPException(status_code=422, detail="Tiada soalan untuk disimpan.")
+
+    draft = (
+        db.query(QuestionBuilderDraft)
+        .filter(QuestionBuilderDraft.id == draft_id)
+        .first()
+    )
+
+    if not draft:
+        raise HTTPException(status_code=404, detail="Draf soalan tidak ditemui.")
+
+    can_update = current_user.role == "Super Admin" or draft.owner_ref == str(current_user.id)
+    if not can_update:
+        raise HTTPException(status_code=403, detail="Akses kemaskini draf tidak dibenarkan.")
+
+    draft.title = data.title.strip() or draft.title or "Draf Soalan"
+    draft.visibility = data.visibility.strip() or draft.visibility or "Private"
+    draft.status = data.status
+    draft.settings_json = json.dumps(data.settings, ensure_ascii=False)
+    draft.files_json = json.dumps(data.files, ensure_ascii=False)
+    draft.questions_json = json.dumps(data.questions, ensure_ascii=False)
+    draft.analysis_json = json.dumps(data.analysis, ensure_ascii=False)
+
+    db.commit()
+    db.refresh(draft)
+
+    return {
+        "id": draft.id,
+        "title": draft.title,
+        "status": draft.status,
+        "message": "Draf soalan berjaya dikemaskini.",
+    }

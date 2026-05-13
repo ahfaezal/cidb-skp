@@ -7,7 +7,9 @@ import {
   FileText,
   Loader2,
   Lock,
+  Maximize2,
   MessageSquare,
+  Printer,
   RefreshCw,
   Search,
   Sparkles,
@@ -517,12 +519,14 @@ export default function QuestionBankPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [savedDrafts, setSavedDrafts] = useState<SavedQuestionDraft[]>([]);
+  const [activeDraftId, setActiveDraftId] = useState<number | null>(null);
   const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
   const [error, setError] = useState("");
   const [draftMessage, setDraftMessage] = useState("");
   const [editingQuestionId, setEditingQuestionId] = useState("");
   const [editingQuestion, setEditingQuestion] = useState<GeneratedQuestion | null>(null);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isDraftSummaryOpen, setIsDraftSummaryOpen] = useState(false);
   const [feedbackResponses, setFeedbackResponses] = useState<Record<string, string>>({});
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
@@ -670,6 +674,7 @@ export default function QuestionBankPage() {
   }
 
   function loadDraft(draft: SavedQuestionDraft) {
+    setActiveDraftId(draft.id);
     setQuestions(normalizeQuestions(draft.questions));
     setAnalysis(draft.analysis || initialAnalysis);
     setQuestionTypes(draft.settings.questionTypes?.length ? draft.settings.questionTypes : questionTypeOptions);
@@ -691,7 +696,7 @@ export default function QuestionBankPage() {
     setGeneratedFileRecords(draft.files || []);
     setUploadedFiles([]);
     setViewMode("Builder");
-    setDraftMessage(`Draf ID ${draft.id} dimuat semula.`);
+    setDraftMessage(`Draf ID ${draft.id} dimuat semula. Edit dan tekan Kemaskini Draf untuk simpan perubahan pada draf ini.`);
   }
 
   function handleFiles(files: FileList | null) {
@@ -835,6 +840,7 @@ export default function QuestionBankPage() {
         files?: QuestionFileRecord[];
       };
 
+      setActiveDraftId(null);
       setQuestions(normalizeQuestions(payload.questions));
       setAnalysis(payload.analysis);
       setGeneratedFileRecords(payload.files || []);
@@ -870,26 +876,31 @@ export default function QuestionBankPage() {
         generateAnswerScheme,
         generateRubric,
       };
-      const response = await fetch(`${API_BASE_URL}/question-builder/drafts`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders(),
+      const response = await fetch(
+        activeDraftId
+          ? `${API_BASE_URL}/question-builder/drafts/${activeDraftId}`
+          : `${API_BASE_URL}/question-builder/drafts`,
+        {
+          method: activeDraftId ? "PUT" : "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders(),
+          },
+          body: JSON.stringify({
+            title: getDocumentTitle(activeFileRecords),
+            ownerRef: user ? String(user.id) : effectiveUserProfile.ownerRef,
+            ownerName: user?.name || effectiveUserProfile.ownerName,
+            ownerRole: user?.role || effectiveUserProfile.ownerRole,
+            projectRef: user?.projectRef || effectiveUserProfile.projectRef,
+            visibility: draftScope === "project" ? "Project" : "Private",
+            status: "Draft",
+            settings,
+            files: activeFileRecords,
+            questions: normalizeQuestions(questions),
+            analysis,
+          }),
         },
-        body: JSON.stringify({
-          title: getDocumentTitle(activeFileRecords),
-          ownerRef: user ? String(user.id) : effectiveUserProfile.ownerRef,
-          ownerName: user?.name || effectiveUserProfile.ownerName,
-          ownerRole: user?.role || effectiveUserProfile.ownerRole,
-          projectRef: user?.projectRef || effectiveUserProfile.projectRef,
-          visibility: draftScope === "project" ? "Project" : "Private",
-          status: "Draft",
-          settings,
-          files: activeFileRecords,
-          questions: normalizeQuestions(questions),
-          analysis,
-        }),
-      });
+      );
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null);
@@ -897,6 +908,7 @@ export default function QuestionBankPage() {
       }
 
       const payload = (await response.json()) as { id: number; message: string };
+      setActiveDraftId(payload.id);
       setDraftMessage(`${payload.message} ID Draf: ${payload.id}`);
       await loadSavedDrafts();
     } catch (err) {
@@ -959,7 +971,7 @@ export default function QuestionBankPage() {
     );
     setEditingQuestion(null);
     setEditingQuestionId("");
-    setDraftMessage("Soalan berjaya dikemaskini. Tekan Simpan Draf untuk simpan ke database.");
+    setDraftMessage("Soalan berjaya dikemaskini. Tekan Kemaskini Draf untuk simpan ke database.");
   }
 
   function cancelEditQuestion() {
@@ -1076,6 +1088,10 @@ export default function QuestionBankPage() {
     }));
   }
 
+  function printDraftSummary() {
+    window.print();
+  }
+
   async function submitFeedback() {
     setError("");
     setDraftMessage("");
@@ -1146,7 +1162,11 @@ export default function QuestionBankPage() {
               disabled={isSavingDraft || questions.length === 0}
               className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSavingDraft ? "Menyimpan..." : "Simpan Draf"}
+              {isSavingDraft
+                ? "Menyimpan..."
+                : activeDraftId
+                  ? "Kemaskini Draf"
+                  : "Simpan Draf"}
             </button>
             <button
               onClick={() => window.location.reload()}
@@ -2043,9 +2063,21 @@ export default function QuestionBankPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-base font-bold text-slate-900">Draf Tersimpan</h2>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                  {savedDrafts.length} draf
-                </span>
+                <div className="flex items-center gap-2">
+                  {draftScope === "all" && effectiveUserProfile.ownerRole === "Super Admin" ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsDraftSummaryOpen(true)}
+                      className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                    >
+                      <Maximize2 className="h-3.5 w-3.5" />
+                      Fullscreen
+                    </button>
+                  ) : null}
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                    {savedDrafts.length} draf
+                  </span>
+                </div>
               </div>
               <div className="mt-3 grid gap-2">
                 <select
@@ -2222,6 +2254,145 @@ export default function QuestionBankPage() {
                 >
                   {isSubmittingFeedback ? "Menghantar..." : "Hantar Feedback"}
                 </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {isDraftSummaryOpen ? (
+          <div className="fixed inset-0 z-50 bg-white print:static print:block">
+            <style jsx global>{`
+              @media print {
+                body * {
+                  visibility: hidden;
+                }
+                #draft-summary-print,
+                #draft-summary-print * {
+                  visibility: visible;
+                }
+                #draft-summary-print {
+                  position: absolute;
+                  left: 0;
+                  top: 0;
+                  width: 100%;
+                }
+                .no-print {
+                  display: none !important;
+                }
+              }
+            `}</style>
+            <div
+              id="draft-summary-print"
+              className="flex h-screen flex-col bg-white text-slate-900 print:h-auto"
+            >
+              <div className="no-print flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-blue-700">
+                    Super Admin
+                  </p>
+                  <h2 className="text-xl font-bold">Summary Draf Soalan Pengguna</h2>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={printDraftSummary}
+                    className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Print
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsDraftSummaryOpen(false)}
+                    className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </div>
+
+              <div className="border-b border-slate-200 px-6 py-4 print:px-0">
+                <h1 className="text-2xl font-bold">Summary Draf Soalan Pengguna</h1>
+                <div className="mt-3 grid gap-3 text-sm text-slate-700 md:grid-cols-4 print:grid-cols-4">
+                  <div className="rounded-xl bg-slate-50 p-3 print:border print:border-slate-200">
+                    <p className="text-xs font-bold uppercase text-slate-500">Jumlah Pengguna</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">
+                      {draftUserSummary.length}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 print:border print:border-slate-200">
+                    <p className="text-xs font-bold uppercase text-slate-500">Jumlah Draf</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">
+                      {savedDrafts.length}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 print:border print:border-slate-200">
+                    <p className="text-xs font-bold uppercase text-slate-500">Jumlah Soalan</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">
+                      {savedDrafts.reduce((total, draft) => total + draft.questions.length, 0)}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3 print:border print:border-slate-200">
+                    <p className="text-xs font-bold uppercase text-slate-500">Scope</p>
+                    <p className="mt-1 text-lg font-bold text-slate-900">
+                      Semua draf sistem
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto px-6 py-5 print:overflow-visible print:px-0">
+                <table className="w-full border-collapse text-left text-sm">
+                  <thead>
+                    <tr className="bg-slate-100 text-xs uppercase text-slate-600">
+                      <th className="border border-slate-300 px-3 py-2">Bil</th>
+                      <th className="border border-slate-300 px-3 py-2">Nama Pengguna</th>
+                      <th className="border border-slate-300 px-3 py-2">Peranan</th>
+                      <th className="border border-slate-300 px-3 py-2">Projek / Batch</th>
+                      <th className="border border-slate-300 px-3 py-2 text-center">Jumlah Draf</th>
+                      <th className="border border-slate-300 px-3 py-2 text-center">Jumlah Soalan</th>
+                      <th className="border border-slate-300 px-3 py-2">Kemaskini Terakhir</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {draftUserSummary.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="border border-slate-300 px-3 py-6 text-center text-slate-500"
+                        >
+                          Tiada ringkasan pengguna lagi.
+                        </td>
+                      </tr>
+                    ) : (
+                      draftUserSummary.map((item, index) => (
+                        <tr key={`${item.ownerName}-${item.projectRef}`} className="align-top">
+                          <td className="border border-slate-300 px-3 py-2 font-bold">
+                            {index + 1}
+                          </td>
+                          <td className="border border-slate-300 px-3 py-2 font-bold">
+                            {item.ownerName}
+                          </td>
+                          <td className="border border-slate-300 px-3 py-2">
+                            {item.ownerRole}
+                          </td>
+                          <td className="border border-slate-300 px-3 py-2">
+                            {item.projectRef}
+                          </td>
+                          <td className="border border-slate-300 px-3 py-2 text-center font-bold">
+                            {item.draftCount}
+                          </td>
+                          <td className="border border-slate-300 px-3 py-2 text-center font-bold">
+                            {item.questionCount}
+                          </td>
+                          <td className="border border-slate-300 px-3 py-2">
+                            {formatDateTime(item.latestUpdate)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
