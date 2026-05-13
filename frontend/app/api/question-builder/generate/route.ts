@@ -7,6 +7,7 @@ type QuestionBuilderPayload = {
   subjectiveCount: number;
   skillCategories: string[];
   difficultyLevels: string[];
+  language?: "Bahasa Melayu" | "English";
   generateAnswerScheme: boolean;
   generateRubric: boolean;
 };
@@ -35,9 +36,15 @@ const requiredDifficultyLevels = [
 ];
 
 function buildPrompt(payload: QuestionBuilderPayload, uploadedFileNames: string[]) {
+  const language = payload.language || "Bahasa Melayu";
+  const languageInstruction =
+    language === "English"
+      ? "Write all generated question content in professional English."
+      : "Write all generated question content in professional Malay.";
+
   return `
 You are an AI question builder for SKP-CIDB competency-based training in Malaysia.
-Write in Malay. Generate assessment questions by reading and using the uploaded note files attached in this request.
+${languageInstruction} Generate assessment questions by reading and using the uploaded note files attached in this request.
 Do not generate generic template questions. Every question must be grounded in the uploaded notes.
 If the uploaded notes do not contain enough information, return a clear error JSON instead of inventing content.
 
@@ -72,14 +79,17 @@ Rules:
 - REQUIRED: Every question must use exactly one skillCategory from the selected skillCategories.
 - REQUIRED: Every question must use exactly one difficulty from the selected difficultyLevels.
 - REQUIRED: The generated set must use only the selected skillCategories and selected difficultyLevels.
-- REQUIRED: Treat the user's 7 input groups as mandatory generation parameters:
+- REQUIRED: Treat the user's 8 input groups as mandatory generation parameters:
   1. uploaded files metadata,
   2. questionTypes,
   3. question counts for objectiveCount and subjectiveCount,
   4. skillCategories,
   5. difficultyLevels,
-  6. generateAnswerScheme,
-  7. generateRubric.
+  6. language,
+  7. generateAnswerScheme,
+  8. generateRubric.
+- REQUIRED: Use the selected language for question, options, answerScheme, rubric.description, rationale and analysis.detectedTopics: ${language}.
+- Keep system metadata values such as type, difficulty and skillCategory in the allowed labels so app validation does not fail.
 - REQUIRED: Interpret the selected skillCategories using these definitions:
   - Prosedur merujuk kepada tatacara, proses atau kaedah kerja yang perlu diikuti untuk menyelesaikan sesuatu tugasan berdasarkan peraturan, langkah dan standard yang telah ditetapkan.
   - Fakta / Teori merujuk kepada pengetahuan, maklumat, prinsip atau konsep yang mempunyai kesahan berdasarkan bukti yang jelas serta digunakan untuk memahami, menerangkan dan merumus sesuatu perkara dengan tepat.

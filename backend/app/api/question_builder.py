@@ -45,6 +45,7 @@ class QuestionBuilderSettings(BaseModel):
     subjectiveCount: int = 0
     skillCategories: List[str]
     difficultyLevels: List[str]
+    language: str = "Bahasa Melayu"
     generateAnswerScheme: bool = True
     generateRubric: bool = True
 
@@ -227,6 +228,9 @@ def validate_settings(settings: QuestionBuilderSettings):
     if invalid_levels:
         raise HTTPException(status_code=422, detail="Aras soalan tidak sah.")
 
+    if settings.language not in {"Bahasa Melayu", "English"}:
+        raise HTTPException(status_code=422, detail="Bahasa soalan tidak sah.")
+
     if "Objektif" in settings.questionTypes:
         objective_breakdown_total = (
             settings.objectiveSingleCount + settings.objectiveCombinationCount
@@ -244,21 +248,27 @@ def build_prompt(settings: QuestionBuilderSettings):
         total_questions += settings.objectiveCount
     if "Subjektif" in settings.questionTypes:
         total_questions += settings.subjectiveCount
+    language_instruction = (
+        "Write all generated question content in professional English."
+        if settings.language == "English"
+        else "Tulis semua kandungan soalan dalam Bahasa Melayu profesional."
+    )
 
     return f"""
 Anda ialah pembina soalan AI untuk platform SKP-CIDB.
-Tulis dalam Bahasa Melayu profesional.
+{language_instruction}
 Gunakan kandungan fail nota yang dilampirkan sebagai sumber utama. Jangan jana soalan template atau soalan umum yang tidak berpaut kepada nota.
 Jangan sebut nama fail, nombor fail, "Nota PL", atau rujukan kepada fail upload dalam teks soalan, pilihan jawapan, skema, rasional, rubrik atau topik analisis.
 
-7 input pengguna yang wajib digunakan:
+8 input pengguna yang wajib digunakan:
 1. Kandungan nota yang dimuat naik oleh pengguna
 2. Jenis soalan: {", ".join(settings.questionTypes)}
 3. Jumlah soalan: Objektif {settings.objectiveCount} (Soalan Satu (1) Pilihan {settings.objectiveSingleCount}, Soalan Aneka Gabungan {settings.objectiveCombinationCount}), Subjektif {settings.subjectiveCount}, keseluruhan {total_questions}
 4. Keterampilan soalan: {", ".join(settings.skillCategories)}
 5. Aras soalan: {", ".join(settings.difficultyLevels)}
-6. Jana skema jawapan: {"Ya" if settings.generateAnswerScheme else "Tidak"}
-7. Jana rubrik jawapan: {"Ya" if settings.generateRubric else "Tidak"}
+6. Bahasa kandungan soalan: {settings.language}
+7. Jana skema jawapan: {"Ya" if settings.generateAnswerScheme else "Tidak"}
+8. Jana rubrik jawapan: {"Ya" if settings.generateRubric else "Tidak"}
 
 Definisi aras soalan berasaskan Bloom Taxonomy:
 - Aras Rendah merangkumi Pengetahuan dan Kefahaman. Soalan mesti menilai ingatan semula, istilah, fakta, turutan kerja, maksud, prinsip asas, kefahaman proses, atau keupayaan menjelaskan/menghuraikan perkara asas daripada nota.
@@ -281,6 +291,8 @@ Peraturan wajib:
 - Jana tepat mengikut jumlah soalan yang diminta untuk jenis yang dipilih.
 - Jika jenis soalan tidak dipilih, jangan jana soalan jenis tersebut walaupun nilai count wujud dalam tetapan.
 - Jumlah questions array mesti tepat {total_questions}. Jangan lebih dan jangan kurang.
+- Semua teks kandungan dalam question, options, combinationItems, answerScheme, rubric.description, rationale dan analysis.detectedTopics mesti menggunakan bahasa yang dipilih pengguna: {settings.language}.
+- Kekalkan nilai metadata sistem seperti type, difficulty, skillCategory dan objectiveFormat dalam label asal yang dibenarkan supaya validation aplikasi tidak gagal.
 - Setiap soalan mesti mempunyai satu skillCategory daripada keterampilan yang dipilih sahaja.
 - Gunakan definisi keterampilan soalan di atas untuk menentukan kategori paling tepat bagi setiap soalan.
 - Jangan pecahkan "Sikap / Keselamatan / Alam Sekitar" kepada kategori berasingan seperti Sikap, Keselamatan atau Alam Sekitar.

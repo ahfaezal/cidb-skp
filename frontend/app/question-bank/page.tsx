@@ -21,6 +21,7 @@ import { useAuth } from "@/src/lib/auth";
 type QuestionType = "Objektif" | "Subjektif";
 type Difficulty = "Aras Rendah" | "Aras Sederhana" | "Aras Tinggi";
 type ViewMode = "Builder" | "Document";
+type QuestionLanguage = "Bahasa Melayu" | "English";
 type SkillCategory =
   | "Prosedur"
   | "Fakta / Teori"
@@ -101,6 +102,7 @@ type SavedQuestionDraft = {
     subjectiveCount?: number;
     skillCategories?: SkillCategory[];
     difficultyLevels?: Difficulty[];
+    language?: QuestionLanguage;
     generateAnswerScheme?: boolean;
     generateRubric?: boolean;
   };
@@ -119,6 +121,7 @@ type UserProfile = {
 };
 
 const questionTypeOptions: QuestionType[] = ["Objektif", "Subjektif"];
+const languageOptions: QuestionLanguage[] = ["Bahasa Melayu", "English"];
 const skillOptions: SkillCategory[] = [
   "Prosedur",
   "Fakta / Teori",
@@ -391,6 +394,7 @@ export default function QuestionBankPage() {
   const [difficultyLevels, setDifficultyLevels] = useState<Difficulty[]>(
     difficultyOptions.map(({ value }) => value)
   );
+  const [language, setLanguage] = useState<QuestionLanguage>("Bahasa Melayu");
   const [generateAnswerScheme, setGenerateAnswerScheme] = useState(true);
   const [generateRubric, setGenerateRubric] = useState(true);
   const [questions, setQuestions] = useState<GeneratedQuestion[]>([]);
@@ -523,6 +527,7 @@ export default function QuestionBankPage() {
         ? draft.settings.difficultyLevels
         : difficultyOptions.map(({ value }) => value),
     );
+    setLanguage(draft.settings.language || "Bahasa Melayu");
     setGenerateAnswerScheme(draft.settings.generateAnswerScheme ?? true);
     setGenerateRubric(draft.settings.generateRubric ?? true);
     setGeneratedFileRecords(draft.files || []);
@@ -645,6 +650,7 @@ export default function QuestionBankPage() {
           subjectiveCount: questionTypes.includes("Subjektif") ? subjectiveCount : 0,
           skillCategories,
           difficultyLevels,
+          language,
           generateAnswerScheme,
           generateRubric,
         })
@@ -702,6 +708,7 @@ export default function QuestionBankPage() {
         subjectiveCount: questionTypes.includes("Subjektif") ? subjectiveCount : 0,
         skillCategories,
         difficultyLevels,
+        language,
         generateAnswerScheme,
         generateRubric,
       };
@@ -840,6 +847,7 @@ export default function QuestionBankPage() {
           subjectiveCount: original.type === "Subjektif" ? 1 : 0,
           skillCategories: [original.skillCategory],
           difficultyLevels: [original.difficulty],
+          language,
           generateAnswerScheme,
           generateRubric,
         }),
@@ -1093,7 +1101,27 @@ export default function QuestionBankPage() {
             </div>
 
             <div className="border-b border-slate-200 p-4">
-              <StepTitle no={2} title="Jumlah Soalan" />
+              <StepTitle no={2} title="Bahasa Soalan" />
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                {languageOptions.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setLanguage(option)}
+                    className={`rounded-xl border px-3 py-2 font-bold transition ${
+                      language === option
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="border-b border-slate-200 p-4">
+              <StepTitle no={3} title="Jumlah Soalan" />
               <div className="space-y-3 text-sm">
                 <div className="flex items-center gap-3">
                   <span className="w-16 text-slate-600">Objektif</span>
@@ -1126,7 +1154,7 @@ export default function QuestionBankPage() {
             </div>
 
             <div className="border-b border-slate-200 p-4">
-              <StepTitle no={3} title="Jenis Soalan" />
+              <StepTitle no={4} title="Jenis Soalan" />
               <div className="grid gap-4 text-sm text-slate-700">
                 {questionTypeOptions.map((type) => (
                   <div key={type} className="rounded-xl border border-slate-200 bg-white p-3">
@@ -1188,7 +1216,7 @@ export default function QuestionBankPage() {
             </div>
 
             <div className="border-b border-slate-200 p-4">
-              <StepTitle no={4} title="Keterampilan Soalan" />
+              <StepTitle no={5} title="Keterampilan Soalan" />
               <div className="grid grid-cols-2 gap-3 text-sm text-slate-700">
                 {skillOptions.map((item) => (
                   <label key={item} className="flex items-center gap-2">
@@ -1204,7 +1232,7 @@ export default function QuestionBankPage() {
             </div>
 
             <div className="border-b border-slate-200 p-4">
-              <StepTitle no={5} title="Aras Soalan" />
+              <StepTitle no={6} title="Aras Soalan" />
               <div className="grid gap-3 text-sm text-slate-700">
                 {difficultyOptions.map(({ value, label }) => (
                   <label key={value} className="flex items-center gap-2">
@@ -1221,7 +1249,7 @@ export default function QuestionBankPage() {
 
             <div className="space-y-4 p-4">
               <div>
-                <StepTitle no={6} title="Skema Jawapan" />
+                <StepTitle no={7} title="Skema Jawapan" />
                 <div className="flex items-center justify-between gap-4">
                   <p className="text-xs text-slate-600">Jana skema jawapan secara automatik</p>
                   <Toggle
@@ -1233,7 +1261,7 @@ export default function QuestionBankPage() {
               </div>
 
               <div>
-                <StepTitle no={7} title="Rubrik Jawapan" />
+                <StepTitle no={8} title="Rubrik Jawapan" />
                 <div className="flex items-center justify-between gap-4">
                   <p className="text-xs text-slate-600">Jana rubrik pemarkahan untuk subjektif</p>
                   <Toggle
@@ -1780,6 +1808,7 @@ export default function QuestionBankPage() {
                   ["Peranan", effectiveUserProfile.ownerRole],
                   ["Projek", effectiveUserProfile.projectRef || "-"],
                   ["Fail Nota", activeFileRecords.length ? `${activeFileRecords.length} fail` : "Belum dipilih"],
+                  ["Bahasa", language],
                   ["Jenis Soalan", questionTypes.join(", ") || "-"],
                   ["Jumlah Soalan", String(totalQuestions)],
                   ["Objektif", questionTypes.includes("Objektif") ? String(objectiveCount) : "0"],
