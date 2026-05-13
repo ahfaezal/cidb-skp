@@ -135,12 +135,21 @@ const difficultyOptions: Array<{ value: Difficulty; label: string }> = [
   { value: "Aras Sederhana", label: "Aras Sederhana" },
   { value: "Aras Tinggi", label: "Aras Tinggi" },
 ];
-const objectiveCombinationOptions = [
-  "A. I, II dan III",
-  "B. I, II dan IV",
-  "C. I, III dan IV",
-  "D. II, III dan IV",
-];
+function getObjectiveCombinationOptions(language: QuestionLanguage = "Bahasa Melayu") {
+  return language === "English"
+    ? [
+        "A. I, II and III",
+        "B. I, II and IV",
+        "C. I, III and IV",
+        "D. II, III and IV",
+      ]
+    : [
+        "A. I, II dan III",
+        "B. I, II dan IV",
+        "C. I, III dan IV",
+        "D. II, III dan IV",
+      ];
+}
 const roleOptions: UserRole[] = [
   "Super Admin",
   "Project Manager",
@@ -440,7 +449,10 @@ function normalizeCombinationItems(items: string[] = []) {
     .map((item, index) => `${romanLabels[index]}. ${item.text}`);
 }
 
-function normalizeObjectiveOptions(question: GeneratedQuestion): GeneratedQuestion {
+function normalizeObjectiveOptions(
+  question: GeneratedQuestion,
+  language: QuestionLanguage = "Bahasa Melayu",
+): GeneratedQuestion {
   if (question.type !== "Objektif") {
     return question;
   }
@@ -453,7 +465,7 @@ function normalizeObjectiveOptions(question: GeneratedQuestion): GeneratedQuesti
       ...question,
       objectiveFormat: "Soalan Aneka Gabungan",
       combinationItems: normalizeCombinationItems(question.combinationItems),
-      options: objectiveCombinationOptions,
+      options: getObjectiveCombinationOptions(language),
     };
   }
 
@@ -487,8 +499,11 @@ function normalizeObjectiveOptions(question: GeneratedQuestion): GeneratedQuesti
   };
 }
 
-function normalizeQuestions(items: GeneratedQuestion[]) {
-  return items.map(normalizeObjectiveOptions);
+function normalizeQuestions(
+  items: GeneratedQuestion[],
+  language: QuestionLanguage = "Bahasa Melayu",
+) {
+  return items.map((item) => normalizeObjectiveOptions(item, language));
 }
 
 export default function QuestionBankPage() {
@@ -674,8 +689,9 @@ export default function QuestionBankPage() {
   }
 
   function loadDraft(draft: SavedQuestionDraft) {
+    const draftLanguage = draft.settings.language || "Bahasa Melayu";
     setActiveDraftId(draft.id);
-    setQuestions(normalizeQuestions(draft.questions));
+    setQuestions(normalizeQuestions(draft.questions, draftLanguage));
     setAnalysis(draft.analysis || initialAnalysis);
     setQuestionTypes(draft.settings.questionTypes?.length ? draft.settings.questionTypes : questionTypeOptions);
     setObjectiveCount(draft.settings.objectiveCount ?? 0);
@@ -690,7 +706,7 @@ export default function QuestionBankPage() {
         ? draft.settings.difficultyLevels
         : difficultyOptions.map(({ value }) => value),
     );
-    setLanguage(draft.settings.language || "Bahasa Melayu");
+    setLanguage(draftLanguage);
     setGenerateAnswerScheme(draft.settings.generateAnswerScheme ?? true);
     setGenerateRubric(draft.settings.generateRubric ?? true);
     setGeneratedFileRecords(draft.files || []);
@@ -841,7 +857,7 @@ export default function QuestionBankPage() {
       };
 
       setActiveDraftId(null);
-      setQuestions(normalizeQuestions(payload.questions));
+      setQuestions(normalizeQuestions(payload.questions, language));
       setAnalysis(payload.analysis);
       setGeneratedFileRecords(payload.files || []);
       setViewMode("Builder");
@@ -896,7 +912,7 @@ export default function QuestionBankPage() {
             status: "Draft",
             settings,
             files: activeFileRecords,
-            questions: normalizeQuestions(questions),
+            questions: normalizeQuestions(questions, language),
             analysis,
           }),
         },
@@ -965,7 +981,7 @@ export default function QuestionBankPage() {
   function saveEditedQuestion() {
     if (!editingQuestion || !editingQuestionId) return;
 
-    const normalized = normalizeObjectiveOptions(editingQuestion);
+    const normalized = normalizeObjectiveOptions(editingQuestion, language);
     setQuestions((current) =>
       current.map((item) => (item.id === editingQuestionId ? normalized : item)),
     );
@@ -1046,7 +1062,7 @@ export default function QuestionBankPage() {
       if (!nextQuestion) {
         throw new Error("AI tidak memulangkan soalan gantian.");
       }
-      const replacement = normalizeObjectiveOptions(nextQuestion);
+      const replacement = normalizeObjectiveOptions(nextQuestion, language);
 
       setQuestions((current) =>
         current.map((item) => (item.id === id ? { ...replacement, id } : item)),

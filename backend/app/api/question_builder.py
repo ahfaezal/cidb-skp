@@ -300,7 +300,7 @@ Peraturan wajib:
 - Soalan objektif mesti ada 4 pilihan A-D, correctAnswer, rationale ringkas dan answerScheme jika diminta.
 - Jana tepat {settings.objectiveSingleCount} soalan objektif dengan objectiveFormat "Soalan Satu (1) Pilihan" dan tepat {settings.objectiveCombinationCount} soalan objektif dengan objectiveFormat "Soalan Aneka Gabungan".
 - Untuk objectiveFormat "Soalan Satu (1) Pilihan", pilihan jawapan objektif mesti disusun daripada teks paling pendek kepada paling panjang. Label A-D mesti ikut susunan baharu dan correctAnswer mesti merujuk label baharu yang betul.
-- Untuk objectiveFormat "Soalan Aneka Gabungan", bina 4 item pernyataan dalam field combinationItems menggunakan label I, II, III dan IV. Susun item I-IV daripada teks paling pendek kepada paling panjang. Field options wajib kekal tepat ["A. I, II dan III", "B. I, II dan IV", "C. I, III dan IV", "D. II, III dan IV"] dan jangan ubah kedudukan pilihan A-D ini.
+- Untuk objectiveFormat "Soalan Aneka Gabungan", bina 4 item pernyataan dalam field combinationItems menggunakan label I, II, III dan IV. Susun item I-IV daripada teks paling pendek kepada paling panjang. Field options wajib menggunakan kombinasi tetap A-D. Jika bahasa ialah English, gunakan "and"; jika bahasa ialah Bahasa Melayu, gunakan "dan". Jangan ubah kedudukan pilihan A-D ini.
 - Soalan subjektif mesti ada answerScheme dalam bentuk poin utama jika diminta.
 - Rubrik hanya untuk soalan subjektif dan wajib disediakan jika generateRubric ialah Ya.
 - Jika nota tidak cukup untuk menjana soalan berkualiti, pulangkan JSON dengan questions kosong dan analysis.detectedTopics yang menerangkan isu tersebut.
@@ -357,6 +357,21 @@ def enforce_generation_settings(result: dict, settings: QuestionBuilderSettings)
         "Soalan Satu (1) Pilihan": 0,
         "Soalan Aneka Gabungan": 0,
     }
+    combination_options = (
+        [
+            "A. I, II and III",
+            "B. I, II and IV",
+            "C. I, III and IV",
+            "D. II, III and IV",
+        ]
+        if settings.language == "English"
+        else [
+            "A. I, II dan III",
+            "B. I, II dan IV",
+            "C. I, III dan IV",
+            "D. II, III dan IV",
+        ]
+    )
     filtered = []
 
     for question in questions:
@@ -384,12 +399,7 @@ def enforce_generation_settings(result: dict, settings: QuestionBuilderSettings)
             objective_format_seen[objective_format] += 1
             question["objectiveFormat"] = objective_format
             if objective_format == "Soalan Aneka Gabungan":
-                question["options"] = [
-                    "A. I, II dan III",
-                    "B. I, II dan IV",
-                    "C. I, III dan IV",
-                    "D. II, III dan IV",
-                ]
+                question["options"] = combination_options
                 if not isinstance(question.get("combinationItems"), list):
                     question["combinationItems"] = []
             else:
