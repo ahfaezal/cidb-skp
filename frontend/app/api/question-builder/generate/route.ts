@@ -25,7 +25,7 @@ type OpenAIContent =
 const requiredSkillCategories = [
   "Prosedur",
   "Fakta / Teori",
-  "Sikap / Keselamatan / Persekitaran",
+  "Sikap / Keselamatan / Alam Sekitar",
 ];
 
 const requiredDifficultyLevels = [
@@ -48,7 +48,7 @@ Return valid JSON only with this shape:
       "id": "string",
       "type": "Objektif or Subjektif",
       "difficulty": "Aras Rendah or Aras Sederhana or Aras Tinggi",
-      "skillCategory": "Prosedur or Fakta / Teori or Sikap / Keselamatan / Persekitaran",
+      "skillCategory": "Prosedur or Fakta / Teori or Sikap / Keselamatan / Alam Sekitar",
       "question": "string",
       "options": ["A. ...", "B. ...", "C. ...", "D. ..."],
       "correctAnswer": "A",
@@ -80,7 +80,11 @@ Rules:
   5. difficultyLevels,
   6. generateAnswerScheme,
   7. generateRubric.
-- Do not invent other skill categories such as separate Sikap, Keselamatan or Persekitaran. Use the combined category exactly as "Sikap / Keselamatan / Persekitaran".
+- REQUIRED: Interpret the selected skillCategories using these definitions:
+  - Prosedur merujuk kepada tatacara, proses atau kaedah kerja yang perlu diikuti untuk menyelesaikan sesuatu tugasan berdasarkan peraturan, langkah dan standard yang telah ditetapkan.
+  - Fakta / Teori merujuk kepada pengetahuan, maklumat, prinsip atau konsep yang mempunyai kesahan berdasarkan bukti yang jelas serta digunakan untuk memahami, menerangkan dan merumus sesuatu perkara dengan tepat.
+  - Sikap / Keselamatan / Alam Sekitar merujuk kepada tingkah laku, respons dan amalan kerja seseorang semasa melaksanakan tugasan dengan mengambil kira disiplin kerja, pematuhan langkah keselamatan serta kesan terhadap diri, tempat kerja dan alam sekitar.
+- Do not invent other skill categories such as separate Sikap, Keselamatan or Alam Sekitar. Use the combined category exactly as "Sikap / Keselamatan / Alam Sekitar".
 - Keep questions practical for construction or rail training if the topic is unclear.
 
 Allowed skill categories:
@@ -213,7 +217,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          "skillCategories must use Prosedur, Fakta / Teori, or Sikap / Keselamatan / Persekitaran.",
+          "skillCategories must use Prosedur, Fakta / Teori, or Sikap / Keselamatan / Alam Sekitar.",
       },
       { status: 400 }
     );

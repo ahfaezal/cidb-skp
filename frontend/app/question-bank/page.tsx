@@ -24,7 +24,7 @@ type ViewMode = "Builder" | "Document";
 type SkillCategory =
   | "Prosedur"
   | "Fakta / Teori"
-  | "Sikap / Keselamatan / Persekitaran";
+  | "Sikap / Keselamatan / Alam Sekitar";
 type UserRole =
   | "Super Admin"
   | "Project Manager"
@@ -122,7 +122,7 @@ const questionTypeOptions: QuestionType[] = ["Objektif", "Subjektif"];
 const skillOptions: SkillCategory[] = [
   "Prosedur",
   "Fakta / Teori",
-  "Sikap / Keselamatan / Persekitaran",
+  "Sikap / Keselamatan / Alam Sekitar",
 ];
 const difficultyOptions: Array<{ value: Difficulty; label: string }> = [
   { value: "Aras Rendah", label: "Aras Rendah" },
@@ -155,7 +155,7 @@ const initialAnalysis: Analysis = {
   skillDistribution: {
     Prosedur: 0,
     "Fakta / Teori": 0,
-    "Sikap / Keselamatan / Persekitaran": 0,
+    "Sikap / Keselamatan / Alam Sekitar": 0,
   },
   difficultyDistribution: {
     "Aras Rendah": 0,
@@ -275,6 +275,26 @@ function getDocumentTitle(files: Array<{ name: string }>) {
   return fileName.replace(/\s+-\s*\d+$/g, "");
 }
 
+function getDocumentTitleParts(files: Array<{ name: string }>) {
+  const title = getDocumentTitle(files);
+  const match = title.match(/^(PL\s*\d+)\s*[-:]?\s*(.*)$/i);
+  const code = (match?.[1] || "PL01").replace(/\s+/g, "").toUpperCase();
+  const name = match?.[2]?.trim() || title;
+
+  return {
+    code,
+    displayTitle: `${code} - ${name}`,
+  };
+}
+
+function getDocumentSkillCategory(category: SkillCategory) {
+  return category === "Fakta / Teori" ? "Fakta/Teori" : category;
+}
+
+function getDocumentDifficulty(difficulty: Difficulty) {
+  return difficulty.replace("Aras ", "");
+}
+
 function splitOption(option: string) {
   const match = option.match(/^([A-D])\.\s*(.*)$/i);
   return {
@@ -286,6 +306,7 @@ function splitOption(option: string) {
 function splitRomanItem(item: string) {
   const match = item.match(/^(I|II|III|IV)\.\s*(.*)$/i);
   return {
+    label: match?.[1]?.toUpperCase() || "",
     text: (match?.[2] || item).trim(),
   };
 }
@@ -1291,117 +1312,95 @@ export default function QuestionBankPage() {
             )}
 
             {viewMode === "Document" && questions.length > 0 ? (
-              <div className="overflow-hidden rounded-2xl border border-slate-300 bg-white">
-                <div className="border-b border-slate-300 bg-slate-100 px-5 py-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-blue-700">
-                    Document Mode
-                  </p>
-                  <h2 className="mt-1 text-lg font-bold text-slate-900">
-                    {getDocumentTitle(activeFileRecords)}
-                  </h2>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Susunan dokumen mengikut format PL: jenis soalan, keterampilan, tajuk, sub modul dan aras kesukaran.
-                  </p>
-                </div>
+              <div className="overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-4">
+                <div className="mx-auto min-h-[1123px] w-[794px] bg-white px-[66px] py-[72px] text-black shadow-sm">
+                  <div className="space-y-8 font-serif text-[16px] leading-[1.35]">
+                    {filteredQuestions.map((item, index) => {
+                      const documentTitle = getDocumentTitleParts(activeFileRecords);
 
-                <div className="divide-y divide-slate-300">
-                  {filteredQuestions.map((item, index) => (
-                    <div key={item.id} className="bg-white">
-                      <div className="grid grid-cols-[120px_130px_minmax(220px,1fr)_120px_130px] border-b border-slate-300 bg-slate-200 text-center text-xs font-bold uppercase text-slate-900">
-                        <div className="border-r border-slate-300 px-3 py-3">Jenis Soalan</div>
-                        <div className="border-r border-slate-300 px-3 py-3">Keterampilan</div>
-                        <div className="border-r border-slate-300 px-3 py-3">No. & Tajuk</div>
-                        <div className="border-r border-slate-300 px-3 py-3">No. Sub Modul</div>
-                        <div className="px-3 py-3">Aras Kesukaran</div>
-                      </div>
-                      <div className="grid grid-cols-[120px_130px_minmax(220px,1fr)_120px_130px] border-b border-slate-300 text-sm">
-                        <div className="border-r border-slate-300 px-3 py-3 font-semibold">
-                          {getDocumentQuestionType(item.type)}
-                        </div>
-                        <div className="border-r border-slate-300 px-3 py-3 font-semibold">
-                          {item.skillCategory}
-                        </div>
-                        <div className="border-r border-slate-300 px-3 py-3 font-semibold">
-                          {getDocumentTitle(activeFileRecords)}
-                        </div>
-                        <div className="border-r border-slate-300 px-3 py-3 text-center font-semibold">
-                          PL
-                        </div>
-                        <div className="px-3 py-3 text-center font-semibold">
-                          {item.difficulty.replace("Aras ", "")}
-                        </div>
-                      </div>
-
-                      <div className="px-5 py-4">
-                        <p className="text-sm font-semibold leading-7 text-slate-900">
-                          {index + 1}. {item.question}
-                        </p>
-                        {item.type === "Objektif" && item.options?.length ? (
-                          <>
-                            {item.objectiveFormat === "Soalan Aneka Gabungan" && item.combinationItems?.length ? (
-                              <div className="mt-3 grid gap-2 text-sm text-slate-800">
-                                {item.combinationItems.map((combinationItem) => (
-                                  <p key={combinationItem}>{combinationItem}</p>
-                                ))}
-                              </div>
-                            ) : null}
-                            <div className="mt-3 grid gap-2 text-sm text-slate-800">
-                              {item.options.map((option) => (
-                                <p key={option}>{option}</p>
-                              ))}
+                      return (
+                        <section key={item.id} className="break-inside-avoid">
+                          <div className="grid grid-cols-[88px_104px_126px_66px_84px] border border-black bg-white text-center text-[12px] font-bold uppercase leading-tight">
+                            <div className="flex min-h-8 items-center justify-center border-r border-black bg-[#d9d9d9] px-1 py-1">
+                              JENIS<br />SOALAN
                             </div>
-                          </>
-                        ) : (
-                          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                            <p className="font-bold">Skema Jawapan</p>
-                            {toList(item.answerScheme).map((scheme) => (
-                              <p key={scheme} className="mt-1">- {scheme}</p>
-                            ))}
+                            <div className="flex min-h-8 items-center justify-center border-r border-black bg-[#d9d9d9] px-1 py-1">
+                              KETERAMPILAN
+                            </div>
+                            <div className="flex min-h-8 items-center justify-center border-r border-black bg-[#d9d9d9] px-1 py-1">
+                              NO. &amp; TAJUK
+                            </div>
+                            <div className="flex min-h-8 items-center justify-center border-r border-black bg-[#d9d9d9] px-1 py-1">
+                              NO. SUB<br />MODUL
+                            </div>
+                            <div className="flex min-h-8 items-center justify-center bg-[#d9d9d9] px-1 py-1">
+                              ARAS<br />KESUKARAN
+                            </div>
                           </div>
-                        )}
+                          <div className="grid grid-cols-[88px_104px_126px_66px_84px] border-x border-b border-black text-center text-[12px] font-bold leading-tight">
+                            <div className="flex min-h-16 items-start justify-center border-r border-black px-1 py-3">
+                              {getDocumentQuestionType(item.type)}
+                            </div>
+                            <div className="flex min-h-16 items-start justify-center border-r border-black px-1 py-3">
+                              {getDocumentSkillCategory(item.skillCategory)}
+                            </div>
+                            <div className="flex min-h-16 items-start justify-center border-r border-black px-2 py-3">
+                              {documentTitle.displayTitle}
+                            </div>
+                            <div className="flex min-h-16 items-start justify-center border-r border-black px-1 py-3">
+                              {documentTitle.code}
+                            </div>
+                            <div className="flex min-h-16 items-start justify-center px-1 py-3">
+                              {getDocumentDifficulty(item.difficulty)}
+                            </div>
+                          </div>
 
-                        <div className="mt-4 grid gap-3 border-t border-slate-200 pt-3 text-xs text-slate-700">
-                          {item.correctAnswer && (
-                            <p>
-                              <span className="font-bold">Jawapan:</span> {item.correctAnswer}
-                            </p>
-                          )}
-                          {item.rationale && (
-                            <p>
-                              <span className="font-bold">Rasional:</span> {item.rationale}
-                            </p>
-                          )}
-                          {toList(item.answerScheme).length > 0 && item.type === "Objektif" && (
-                            <div>
-                              <p className="font-bold">Skema Jawapan</p>
-                              {toList(item.answerScheme).map((scheme) => (
-                                <p key={scheme} className="mt-1">- {scheme}</p>
-                              ))}
+                          <div className="mt-5 text-[16px] font-bold">
+                            <div className="grid grid-cols-[18px_1fr] gap-2">
+                              <span>{index + 1}.</span>
+                              <p>{item.question}</p>
                             </div>
-                          )}
-                          {item.rubric?.length ? (
-                            <div className="overflow-hidden rounded-lg border border-slate-200">
-                              <div className="grid grid-cols-[1fr_80px_1.4fr] bg-slate-100 px-3 py-2 font-bold">
-                                <span>Kriteria</span>
-                                <span>Markah</span>
-                                <span>Deskripsi</span>
-                              </div>
-                              {item.rubric.map((rubric) => (
-                                <div
-                                  key={`${item.id}-${rubric.criteria}`}
-                                  className="grid grid-cols-[1fr_80px_1.4fr] border-t border-slate-200 px-3 py-2"
-                                >
-                                  <span>{rubric.criteria}</span>
-                                  <span>{rubric.marks}</span>
-                                  <span>{rubric.description}</span>
+
+                            {item.type === "Objektif" && item.options?.length ? (
+                              <>
+                                {item.objectiveFormat === "Soalan Aneka Gabungan" && item.combinationItems?.length ? (
+                                  <div className="mt-5 grid gap-2 pl-9">
+                                    {item.combinationItems.map((combinationItem) => {
+                                      const parsed = splitRomanItem(combinationItem);
+
+                                      return (
+                                        <div
+                                          key={combinationItem}
+                                          className="grid grid-cols-[32px_1fr] gap-2"
+                                        >
+                                          <span>{parsed.label}.</span>
+                                          <span>{parsed.text}</span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
+                                <div className="mt-5 grid gap-4 pl-9">
+                                  {item.options.map((option) => {
+                                    const parsed = splitOption(option);
+
+                                    return (
+                                      <div key={option} className="grid grid-cols-[22px_1fr] gap-2">
+                                        <span>{parsed.label}.</span>
+                                        <span>{parsed.text}</span>
+                                      </div>
+                                    );
+                                  })}
                                 </div>
-                              ))}
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+                              </>
+                            ) : (
+                              <div className="mt-8 min-h-24 border-b border-dotted border-slate-500" />
+                            )}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             ) : isGenerating ? (

@@ -27,7 +27,7 @@ router = APIRouter(
 REQUIRED_SKILL_CATEGORIES = {
     "Prosedur",
     "Fakta / Teori",
-    "Sikap / Keselamatan / Persekitaran",
+    "Sikap / Keselamatan / Alam Sekitar",
 }
 REQUIRED_DIFFICULTY_LEVELS = {
     "Aras Rendah",
@@ -272,11 +272,18 @@ Peraturan aras:
 - Gunakan kata kerja yang sepadan dengan aras. Contoh Rendah: nyatakan, kenal pasti, terangkan, susun. Contoh Sederhana: gunakan, pilih, tunjukkan, laksanakan, bina. Contoh Tinggi: analisis, bandingkan, rumuskan, cadangkan, nilai, kritik, justifikasikan.
 - Pastikan difficulty setiap soalan benar-benar selari dengan definisi aras, bukan sekadar label.
 
+Definisi keterampilan soalan yang wajib digunakan semasa mentafsir pilihan pengguna:
+- Prosedur merujuk kepada tatacara, proses atau kaedah kerja yang perlu diikuti untuk menyelesaikan sesuatu tugasan berdasarkan peraturan, langkah dan standard yang telah ditetapkan.
+- Fakta / Teori merujuk kepada pengetahuan, maklumat, prinsip atau konsep yang mempunyai kesahan berdasarkan bukti yang jelas serta digunakan untuk memahami, menerangkan dan merumus sesuatu perkara dengan tepat.
+- Sikap / Keselamatan / Alam Sekitar merujuk kepada tingkah laku, respons dan amalan kerja seseorang semasa melaksanakan tugasan dengan mengambil kira disiplin kerja, pematuhan langkah keselamatan serta kesan terhadap diri, tempat kerja dan alam sekitar.
+
 Peraturan wajib:
 - Jana tepat mengikut jumlah soalan yang diminta untuk jenis yang dipilih.
 - Jika jenis soalan tidak dipilih, jangan jana soalan jenis tersebut walaupun nilai count wujud dalam tetapan.
 - Jumlah questions array mesti tepat {total_questions}. Jangan lebih dan jangan kurang.
 - Setiap soalan mesti mempunyai satu skillCategory daripada keterampilan yang dipilih sahaja.
+- Gunakan definisi keterampilan soalan di atas untuk menentukan kategori paling tepat bagi setiap soalan.
+- Jangan pecahkan "Sikap / Keselamatan / Alam Sekitar" kepada kategori berasingan seperti Sikap, Keselamatan atau Alam Sekitar.
 - Setiap soalan mesti mempunyai satu difficulty daripada aras yang dipilih sahaja.
 - Soalan objektif mesti ada 4 pilihan A-D, correctAnswer, rationale ringkas dan answerScheme jika diminta.
 - Jana tepat {settings.objectiveSingleCount} soalan objektif dengan objectiveFormat "Soalan Satu (1) Pilihan" dan tepat {settings.objectiveCombinationCount} soalan objektif dengan objectiveFormat "Soalan Aneka Gabungan".
