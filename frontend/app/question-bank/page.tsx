@@ -391,6 +391,25 @@ function getDocumentDifficulty(difficulty: Difficulty) {
   return difficulty.replace("Aras ", "");
 }
 
+function formatDateTime(value: string) {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+
+  return date.toLocaleString("ms-MY", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function splitOption(option: string) {
   const match = option.match(/^([A-D])\.\s*(.*)$/i);
   return {
@@ -540,6 +559,49 @@ export default function QuestionBankPage() {
       return matchesFilter && matchesSearch;
     });
   }, [activeFilter, questions, searchTerm]);
+  const draftUserSummary = useMemo(() => {
+    const summary = new Map<
+      string,
+      {
+        ownerName: string;
+        ownerRole: UserRole;
+        projectRef: string;
+        draftCount: number;
+        questionCount: number;
+        latestUpdate: string;
+      }
+    >();
+
+    savedDrafts.forEach((draft) => {
+      const key = draft.ownerRef || `${draft.ownerName}-${draft.projectRef}`;
+      const current =
+        summary.get(key) ||
+        {
+          ownerName: draft.ownerName || draft.ownerRef || "Pengguna",
+          ownerRole: draft.ownerRole,
+          projectRef: draft.projectRef || "-",
+          draftCount: 0,
+          questionCount: 0,
+          latestUpdate: draft.updatedAt || draft.createdAt,
+        };
+
+      current.draftCount += 1;
+      current.questionCount += draft.questions.length;
+      if (
+        (draft.updatedAt || draft.createdAt) &&
+        (!current.latestUpdate ||
+          new Date(draft.updatedAt || draft.createdAt) > new Date(current.latestUpdate))
+      ) {
+        current.latestUpdate = draft.updatedAt || draft.createdAt;
+      }
+
+      summary.set(key, current);
+    });
+
+    return Array.from(summary.values()).sort(
+      (a, b) => b.questionCount - a.questionCount || b.draftCount - a.draftCount,
+    );
+  }, [savedDrafts]);
   const activeFileRecords: QuestionFileRecord[] = generatedFileRecords.length
     ? generatedFileRecords
     : uploadedFiles.map(({ id, name, size, type }) => ({
@@ -1979,7 +2041,12 @@ export default function QuestionBankPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-base font-bold text-slate-900">Draf Tersimpan</h2>
+              <div className="flex items-center justify-between gap-3">
+                <h2 className="text-base font-bold text-slate-900">Draf Tersimpan</h2>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
+                  {savedDrafts.length} draf
+                </span>
+              </div>
               <div className="mt-3 grid gap-2">
                 <select
                   value={draftScope}
@@ -2006,13 +2073,48 @@ export default function QuestionBankPage() {
                 ) : null}
               </div>
 
-              <div className="mt-4 space-y-3 border-t border-slate-200 pt-4">
+              {draftScope === "all" && effectiveUserProfile.ownerRole === "Super Admin" ? (
+                <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+                  <div className="grid grid-cols-[minmax(120px,1.2fr)_70px_80px_minmax(90px,1fr)_105px] bg-slate-100 px-3 py-2 text-[11px] font-bold uppercase text-slate-700">
+                    <span>Pengguna</span>
+                    <span className="text-center">Draf</span>
+                    <span className="text-center">Soalan</span>
+                    <span>Projek</span>
+                    <span>Kemaskini</span>
+                  </div>
+                  <div className="max-h-56 overflow-y-auto">
+                    {draftUserSummary.length === 0 ? (
+                      <p className="px-3 py-3 text-sm text-slate-500">
+                        Tiada ringkasan pengguna lagi.
+                      </p>
+                    ) : (
+                      draftUserSummary.map((item) => (
+                        <div
+                          key={`${item.ownerName}-${item.projectRef}`}
+                          className="grid grid-cols-[minmax(120px,1.2fr)_70px_80px_minmax(90px,1fr)_105px] border-t border-slate-200 px-3 py-2 text-xs text-slate-700"
+                        >
+                          <div>
+                            <p className="font-bold text-slate-900">{item.ownerName}</p>
+                            <p className="mt-0.5 text-[11px] text-slate-500">{item.ownerRole}</p>
+                          </div>
+                          <span className="text-center font-bold">{item.draftCount}</span>
+                          <span className="text-center font-bold">{item.questionCount}</span>
+                          <span>{item.projectRef}</span>
+                          <span>{formatDateTime(item.latestUpdate)}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-4 max-h-[560px] space-y-3 overflow-y-auto border-t border-slate-200 pt-4 pr-1">
                 {isLoadingDrafts ? (
                   <p className="text-sm text-slate-500">Memuat draf...</p>
                 ) : savedDrafts.length === 0 ? (
                   <p className="text-sm text-slate-500">Belum ada draf tersimpan.</p>
                 ) : (
-                  savedDrafts.slice(0, 5).map((draft) => (
+                  savedDrafts.map((draft) => (
                     <button
                       key={draft.id}
                       type="button"
