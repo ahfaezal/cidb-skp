@@ -358,8 +358,12 @@ function getGenerationErrorMessage(payload: unknown) {
   return "AI gagal menjana soalan.";
 }
 
-function getDocumentQuestionType(type: QuestionType) {
-  return type === "Objektif" ? "Satu (1) Pilihan" : "Subjektif";
+function getDocumentQuestionType(question: GeneratedQuestion) {
+  if (question.type === "Subjektif") {
+    return "Subjektif";
+  }
+
+  return question.objectiveFormat || "Soalan Satu (1) Pilihan";
 }
 
 function getDocumentTitle(files: Array<{ name: string }>) {
@@ -1494,37 +1498,37 @@ export default function QuestionBankPage() {
 
                       return (
                         <section key={item.id} className="break-inside-avoid">
-                          <div className="grid grid-cols-[88px_104px_126px_66px_84px] border border-black bg-white text-center text-[12px] font-bold uppercase leading-tight">
-                            <div className="flex min-h-8 items-center justify-center border-r border-black bg-[#d9d9d9] px-1 py-1">
+                          <div className="grid grid-cols-[100px_118px_minmax(0,1fr)_76px_106px] border border-black bg-[#d9d9d9] text-center text-[12px] font-bold uppercase leading-tight">
+                            <div className="flex min-h-11 items-center justify-center border-r border-black px-1 py-1">
                               JENIS<br />SOALAN
                             </div>
-                            <div className="flex min-h-8 items-center justify-center border-r border-black bg-[#d9d9d9] px-1 py-1">
+                            <div className="flex min-h-11 items-center justify-center border-r border-black px-1 py-1">
                               KETERAMPILAN
                             </div>
-                            <div className="flex min-h-8 items-center justify-center border-r border-black bg-[#d9d9d9] px-1 py-1">
+                            <div className="flex min-h-11 items-center justify-center border-r border-black px-1 py-1">
                               NO. &amp; TAJUK
                             </div>
-                            <div className="flex min-h-8 items-center justify-center border-r border-black bg-[#d9d9d9] px-1 py-1">
+                            <div className="flex min-h-11 items-center justify-center border-r border-black px-1 py-1">
                               NO. SUB<br />MODUL
                             </div>
-                            <div className="flex min-h-8 items-center justify-center bg-[#d9d9d9] px-1 py-1">
+                            <div className="flex min-h-11 items-center justify-center px-1 py-1">
                               ARAS<br />KESUKARAN
                             </div>
                           </div>
-                          <div className="grid grid-cols-[88px_104px_126px_66px_84px] border-x border-b border-black text-center text-[12px] font-bold leading-tight">
-                            <div className="flex min-h-16 items-start justify-center border-r border-black px-1 py-3">
-                              {getDocumentQuestionType(item.type)}
+                          <div className="grid grid-cols-[100px_118px_minmax(0,1fr)_76px_106px] border-x border-b border-black text-center text-[12px] font-bold leading-tight">
+                            <div className="flex min-h-24 items-start justify-center border-r border-black px-2 py-3">
+                              {getDocumentQuestionType(item)}
                             </div>
-                            <div className="flex min-h-16 items-start justify-center border-r border-black px-1 py-3">
+                            <div className="flex min-h-24 items-start justify-center border-r border-black px-2 py-3">
                               {getDocumentSkillCategory(item.skillCategory)}
                             </div>
-                            <div className="flex min-h-16 items-start justify-center border-r border-black px-2 py-3">
+                            <div className="flex min-h-24 items-start justify-center border-r border-black px-3 py-3">
                               {documentTitle.displayTitle}
                             </div>
-                            <div className="flex min-h-16 items-start justify-center border-r border-black px-1 py-3">
+                            <div className="flex min-h-24 items-start justify-center border-r border-black px-2 py-3">
                               {documentTitle.code}
                             </div>
-                            <div className="flex min-h-16 items-start justify-center px-1 py-3">
+                            <div className="flex min-h-24 items-start justify-center px-2 py-3">
                               {getDocumentDifficulty(item.difficulty)}
                             </div>
                           </div>
