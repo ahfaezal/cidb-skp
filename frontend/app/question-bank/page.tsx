@@ -79,6 +79,8 @@ type GeneratedQuestion = {
   answerScheme?: string[] | string;
   rubric?: RubricItem[];
   rationale?: string;
+  skillRationale?: string;
+  difficultyRationale?: string;
   locked?: boolean;
 };
 
@@ -400,6 +402,46 @@ function getDocumentSkillCategory(category: SkillCategory) {
 
 function getDocumentDifficulty(difficulty: Difficulty) {
   return difficulty.replace("Aras ", "");
+}
+
+function getDefaultSkillRationale(category: SkillCategory, language: QuestionLanguage) {
+  if (language === "English") {
+    if (category === "Prosedur") {
+      return "This question is categorized as Procedure because it assesses steps, work methods, task sequence, or compliance with established work standards.";
+    }
+    if (category === "Fakta / Teori") {
+      return "This question is categorized as Fact / Theory because it assesses knowledge, concepts, principles, or valid information needed to explain the topic accurately.";
+    }
+    return "This question is categorized as Attitude / Safety / Environment because it assesses work behaviour, safety compliance, discipline, or environmental consideration.";
+  }
+
+  if (category === "Prosedur") {
+    return "Soalan ini dikategorikan sebagai Prosedur kerana menilai langkah kerja, kaedah kerja, turutan tugasan atau pematuhan standard kerja yang ditetapkan.";
+  }
+  if (category === "Fakta / Teori") {
+    return "Soalan ini dikategorikan sebagai Fakta / Teori kerana menilai pengetahuan, konsep, prinsip atau maklumat sahih untuk menerangkan perkara dengan tepat.";
+  }
+  return "Soalan ini dikategorikan sebagai Sikap / Keselamatan / Alam Sekitar kerana menilai tingkah laku kerja, pematuhan keselamatan, disiplin atau pertimbangan alam sekitar.";
+}
+
+function getDefaultDifficultyRationale(difficulty: Difficulty, language: QuestionLanguage) {
+  if (language === "English") {
+    if (difficulty === "Aras Rendah") {
+      return "This question is categorized as Low Level because it focuses on recall, understanding, basic terms, facts, or simple explanation from the notes.";
+    }
+    if (difficulty === "Aras Sederhana") {
+      return "This question is categorized as Medium Level because it requires applying knowledge or selecting an appropriate action in a work-related context.";
+    }
+    return "This question is categorized as High Level because it requires analysis, synthesis, evaluation, justification, or decision-making based on the given context.";
+  }
+
+  if (difficulty === "Aras Rendah") {
+    return "Soalan ini dikategorikan sebagai Aras Rendah kerana menilai ingatan semula, kefahaman, istilah asas, fakta atau penerangan ringkas daripada nota.";
+  }
+  if (difficulty === "Aras Sederhana") {
+    return "Soalan ini dikategorikan sebagai Aras Sederhana kerana memerlukan aplikasi pengetahuan atau pemilihan tindakan yang sesuai dalam konteks kerja.";
+  }
+  return "Soalan ini dikategorikan sebagai Aras Tinggi kerana memerlukan analisis, sintesis, penilaian, justifikasi atau membuat keputusan berdasarkan konteks.";
 }
 
 function formatDateTime(value: string) {
@@ -1960,6 +2002,24 @@ export default function QuestionBankPage() {
                         <p className="mt-2 text-xs leading-6 text-slate-600">
                           {item.rationale || "Rasional akan dipaparkan selepas skema dijana."}
                         </p>
+                        <div className="mt-4 border-t border-slate-200 pt-3">
+                          <p className="text-xs font-bold text-slate-700">
+                            Keterampilan Soalan
+                          </p>
+                          <p className="mt-2 text-xs leading-5 text-slate-600">
+                            {item.skillRationale ||
+                              getDefaultSkillRationale(item.skillCategory, language)}
+                          </p>
+                        </div>
+                        <div className="mt-4 border-t border-slate-200 pt-3">
+                          <p className="text-xs font-bold text-slate-700">
+                            Aras Soalan
+                          </p>
+                          <p className="mt-2 text-xs leading-5 text-slate-600">
+                            {item.difficultyRationale ||
+                              getDefaultDifficultyRationale(item.difficulty, language)}
+                          </p>
+                        </div>
                         {item.type === "Objektif" && toList(item.answerScheme).length > 0 && (
                           <div className="mt-4 border-t border-slate-200 pt-3">
                             <p className="text-xs font-bold text-slate-700">Skema</p>

@@ -61,7 +61,9 @@ Return valid JSON only with this shape:
       "correctAnswer": "A",
       "answerScheme": ["string"],
       "rubric": [{"criteria":"string","marks":5,"description":"string"}],
-      "rationale": "string"
+      "rationale": "string",
+      "skillRationale": "string",
+      "difficultyRationale": "string"
     }
   ],
   "analysis": {
@@ -88,12 +90,14 @@ Rules:
   6. language,
   7. generateAnswerScheme,
   8. generateRubric.
-- REQUIRED: Use the selected language for question, options, answerScheme, rubric.description, rationale and analysis.detectedTopics: ${language}.
+- REQUIRED: Use the selected language for question, options, answerScheme, rubric.description, rationale, skillRationale, difficultyRationale and analysis.detectedTopics: ${language}.
 - Keep system metadata values such as type, difficulty and skillCategory in the allowed labels so app validation does not fail.
 - REQUIRED: Interpret the selected skillCategories using these definitions:
   - Prosedur merujuk kepada tatacara, proses atau kaedah kerja yang perlu diikuti untuk menyelesaikan sesuatu tugasan berdasarkan peraturan, langkah dan standard yang telah ditetapkan.
   - Fakta / Teori merujuk kepada pengetahuan, maklumat, prinsip atau konsep yang mempunyai kesahan berdasarkan bukti yang jelas serta digunakan untuk memahami, menerangkan dan merumus sesuatu perkara dengan tepat.
   - Sikap / Keselamatan / Alam Sekitar merujuk kepada tingkah laku, respons dan amalan kerja seseorang semasa melaksanakan tugasan dengan mengambil kira disiplin kerja, pematuhan langkah keselamatan serta kesan terhadap diri, tempat kerja dan alam sekitar.
+- REQUIRED: Every question must include skillRationale explaining why the selected skillCategory fits the question.
+- REQUIRED: Every question must include difficultyRationale explaining why the selected difficulty fits the Bloom level and cognitive demand.
 - Do not invent other skill categories such as separate Sikap, Keselamatan or Alam Sekitar. Use the combined category exactly as "Sikap / Keselamatan / Alam Sekitar".
 - Keep questions practical for construction or rail training if the topic is unclear.
 

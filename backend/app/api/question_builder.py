@@ -291,12 +291,14 @@ Peraturan wajib:
 - Jana tepat mengikut jumlah soalan yang diminta untuk jenis yang dipilih.
 - Jika jenis soalan tidak dipilih, jangan jana soalan jenis tersebut walaupun nilai count wujud dalam tetapan.
 - Jumlah questions array mesti tepat {total_questions}. Jangan lebih dan jangan kurang.
-- Semua teks kandungan dalam question, options, combinationItems, answerScheme, rubric.description, rationale dan analysis.detectedTopics mesti menggunakan bahasa yang dipilih pengguna: {settings.language}.
+- Semua teks kandungan dalam question, options, combinationItems, answerScheme, rubric.description, rationale, skillRationale, difficultyRationale dan analysis.detectedTopics mesti menggunakan bahasa yang dipilih pengguna: {settings.language}.
 - Kekalkan nilai metadata sistem seperti type, difficulty, skillCategory dan objectiveFormat dalam label asal yang dibenarkan supaya validation aplikasi tidak gagal.
 - Setiap soalan mesti mempunyai satu skillCategory daripada keterampilan yang dipilih sahaja.
 - Gunakan definisi keterampilan soalan di atas untuk menentukan kategori paling tepat bagi setiap soalan.
+- Setiap soalan mesti mempunyai skillRationale yang menerangkan mengapa skillCategory tersebut sesuai berdasarkan definisi keterampilan dan kandungan soalan.
 - Jangan pecahkan "Sikap / Keselamatan / Alam Sekitar" kepada kategori berasingan seperti Sikap, Keselamatan atau Alam Sekitar.
 - Setiap soalan mesti mempunyai satu difficulty daripada aras yang dipilih sahaja.
+- Setiap soalan mesti mempunyai difficultyRationale yang menerangkan mengapa difficulty tersebut sesuai berdasarkan Bloom Taxonomy dan tuntutan kognitif soalan.
 - Soalan objektif mesti ada 4 pilihan A-D, correctAnswer, rationale ringkas dan answerScheme jika diminta.
 - Jana tepat {settings.objectiveSingleCount} soalan objektif dengan objectiveFormat "Soalan Satu (1) Pilihan" dan tepat {settings.objectiveCombinationCount} soalan objektif dengan objectiveFormat "Soalan Aneka Gabungan".
 - Untuk objectiveFormat "Soalan Satu (1) Pilihan", pilihan jawapan objektif mesti disusun daripada teks paling pendek kepada paling panjang. Label A-D mesti ikut susunan baharu dan correctAnswer mesti merujuk label baharu yang betul.
@@ -322,7 +324,9 @@ Pulangkan JSON sah sahaja, tanpa Markdown, dalam format:
       "rubric": [
         {{"criteria": "Kriteria", "marks": 5, "description": "Deskripsi ringkas"}}
       ],
-      "rationale": "Rasional ringkas"
+      "rationale": "Rasional jawapan ringkas",
+      "skillRationale": "Rasional kategori keterampilan",
+      "difficultyRationale": "Rasional aras soalan"
     }}
   ],
   "analysis": {{
