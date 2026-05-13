@@ -6,6 +6,7 @@ from app.api.cmcs import router as cmcs_router
 from app.api.learning_packages import router as learning_packages_router
 from app.api.module_content_blocks import router as module_content_blocks_router
 from app.api.review_records import router as review_records_router
+from app.api.question_feedback import router as question_feedback_router
 from app.api.question_builder import router as question_builder_router
 from app.api.skp_modules import router as skp_modules_router
 from app.api.trade_cmcs_mappings import router as trade_cmcs_mappings_router
@@ -18,6 +19,7 @@ from app.models import cmcs
 from app.models import learning_package
 from app.models import module_content_block
 from app.models import review_record
+from app.models import question_feedback
 from app.models import question_builder_draft
 from app.models import skp_module
 from app.models import trade
@@ -89,6 +91,7 @@ app.include_router(module_content_blocks_router)
 app.include_router(skp_modules_router)
 app.include_router(learning_packages_router)
 app.include_router(assessment_questions_router)
+app.include_router(question_feedback_router)
 app.include_router(question_builder_router)
 
 @app.get("/")

@@ -10,6 +10,7 @@ from app.api.learning_packages import router as learning_packages_router
 from app.api.mapping_groupings import router as mapping_groupings_router
 from app.api.module_builder_ai import router as module_builder_ai_router
 from app.api.module_content_blocks import router as module_content_blocks_router
+from app.api.question_feedback import router as question_feedback_router
 from app.api.review_records import router as review_records_router
 from app.api.skp_modules import router as skp_modules_router
 from app.api.trade_cmcs_mappings import router as trade_cmcs_mappings_router
@@ -22,6 +23,7 @@ from app.models.cmcs import CMCS
 from app.models.learning_package import LearningPackage
 from app.models.mapping_grouping import MappingGrouping
 from app.models.module_content_block import ModuleContentBlock
+from app.models.question_feedback import QuestionFeedback
 from app.models.review_record import ReviewRecord
 from app.models.skp_module import SKPModule
 from app.models.trade import Trade
@@ -205,6 +207,7 @@ app.include_router(competency_units_router)
 app.include_router(work_activities_router)
 app.include_router(performance_criteria_router)
 app.include_router(performance_criteria_items_router)
+app.include_router(question_feedback_router)
 app.include_router(question_builder_router)
 app.include_router(auth_router)
 

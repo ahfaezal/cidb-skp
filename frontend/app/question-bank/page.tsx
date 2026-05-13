@@ -7,6 +7,7 @@ import {
   FileText,
   Loader2,
   Lock,
+  MessageSquare,
   RefreshCw,
   Search,
   Sparkles,
@@ -152,6 +153,94 @@ const defaultUserProfile: UserProfile = {
   ownerRole: "Fasilitator",
   projectRef: "SKP-CIDB",
 };
+const feedbackQuestions = [
+  {
+    id: "generationProcess",
+    label: "Adakah proses menjana soalan daripada nota berjalan lancar?",
+    type: "choice",
+    options: ["Ya", "Sebahagian", "Tidak"],
+  },
+  {
+    id: "settingsClarity",
+    label: "Adakah tetapan soalan mudah difahami?",
+    type: "choice",
+    options: ["Ya", "Sebahagian", "Tidak"],
+  },
+  {
+    id: "groundedInNotes",
+    label: "Adakah soalan yang dijana benar-benar berdasarkan nota yang dimuat naik?",
+    type: "choice",
+    options: ["Ya", "Sebahagian", "Tidak"],
+  },
+  {
+    id: "difficultyAccuracy",
+    label: "Adakah tahap aras soalan yang dijana sesuai dengan pilihan anda?",
+    type: "choice",
+    options: ["Ya", "Sebahagian", "Tidak"],
+  },
+  {
+    id: "skillAccuracy",
+    label: "Adakah kategori keterampilan soalan yang dijana tepat?",
+    type: "choice",
+    options: ["Ya", "Sebahagian", "Tidak"],
+  },
+  {
+    id: "objectiveFormatFit",
+    label: "Adakah format soalan objektif dan aneka gabungan menepati format yang anda perlukan?",
+    type: "choice",
+    options: ["Ya", "Sebahagian", "Tidak", "Tidak berkaitan"],
+  },
+  {
+    id: "answerSchemeQuality",
+    label: "Adakah skema jawapan yang dijana tepat dan mencukupi?",
+    type: "choice",
+    options: ["Ya", "Sebahagian", "Tidak", "Tidak berkaitan"],
+  },
+  {
+    id: "rubricQuality",
+    label: "Adakah rubrik jawapan subjektif sesuai untuk pemarkahan?",
+    type: "choice",
+    options: ["Ya", "Sebahagian", "Tidak", "Tidak berkaitan"],
+  },
+  {
+    id: "mostHelpful",
+    label: "Bahagian mana dalam proses pembangunan soalan yang paling memudahkan kerja anda?",
+    type: "text",
+  },
+  {
+    id: "hardestPart",
+    label: "Bahagian mana yang masih menyukarkan kerja anda?",
+    type: "text",
+  },
+  {
+    id: "firstImprovement",
+    label: "Apakah perkara pertama yang anda akan baiki dalam fungsi Question Bank ini?",
+    type: "text",
+  },
+  {
+    id: "mainAiIssue",
+    label: "Jika AI menghasilkan soalan yang kurang memuaskan, apakah punca utamanya?",
+    type: "choice",
+    options: [
+      "Tidak ikut nota",
+      "Bahasa kurang tepat",
+      "Aras soalan tidak tepat",
+      "Keterampilan soalan tidak tepat",
+      "Pilihan jawapan kurang berkualiti",
+      "Skema jawapan tidak lengkap",
+      "Rubrik tidak sesuai",
+      "Format dokumen tidak menepati kehendak",
+      "Lain-lain",
+      "Tiada isu utama",
+    ],
+  },
+  {
+    id: "overallHelpfulness",
+    label: "Secara keseluruhan, sejauh mana fungsi pembangunan soalan ini membantu kerja anda?",
+    type: "rating",
+    options: ["1", "2", "3", "4", "5"],
+  },
+];
 
 const initialAnalysis: Analysis = {
   detectedTopics: [],
@@ -410,6 +499,9 @@ export default function QuestionBankPage() {
   const [draftMessage, setDraftMessage] = useState("");
   const [editingQuestionId, setEditingQuestionId] = useState("");
   const [editingQuestion, setEditingQuestion] = useState<GeneratedQuestion | null>(null);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [feedbackResponses, setFeedbackResponses] = useState<Record<string, string>>({});
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     if (typeof window === "undefined") {
       return defaultUserProfile;
@@ -911,6 +1003,52 @@ export default function QuestionBankPage() {
     );
   }
 
+  function updateFeedbackResponse(id: string, value: string) {
+    setFeedbackResponses((current) => ({
+      ...current,
+      [id]: value,
+    }));
+  }
+
+  async function submitFeedback() {
+    setError("");
+    setDraftMessage("");
+
+    const missingQuestion = feedbackQuestions.find(
+      (question) => !feedbackResponses[question.id]?.trim(),
+    );
+    if (missingQuestion) {
+      setError("Sila lengkapkan semua soalan feedback sebelum hantar.");
+      return;
+    }
+
+    setIsSubmittingFeedback(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/question-feedback/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders(),
+        },
+        body: JSON.stringify({ responses: feedbackResponses }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.detail || "Feedback gagal dihantar.");
+      }
+
+      setFeedbackResponses({});
+      setIsFeedbackOpen(false);
+      setDraftMessage("Terima kasih. Feedback penggunaan Question Bank berjaya dihantar.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Feedback gagal dihantar.");
+    } finally {
+      setIsSubmittingFeedback(false);
+    }
+  }
+
   return (
     <AppShell>
       <div className="space-y-6">
@@ -929,6 +1067,14 @@ export default function QuestionBankPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => setIsFeedbackOpen(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 px-5 py-3 text-sm font-semibold text-blue-700 shadow-sm hover:bg-blue-100"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Feedback
+            </button>
             <button
               onClick={saveDraft}
               disabled={isSavingDraft || questions.length === 0}
@@ -1890,6 +2036,90 @@ export default function QuestionBankPage() {
             </button>
           </aside>
         </section>
+
+        {isFeedbackOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+            <div className="max-h-[90vh] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="border-b border-slate-200 px-6 py-5">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-blue-700">
+                      Feedback Question Bank
+                    </p>
+                    <h2 className="mt-1 text-xl font-bold text-slate-900">
+                      Maklum Balas Pembangunan Soalan
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Feedback ini direkod bersama akaun login anda untuk membantu penambahbaikan fungsi jana soalan.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsFeedbackOpen(false)}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-[60vh] space-y-5 overflow-y-auto px-6 py-5">
+                {feedbackQuestions.map((question, index) => (
+                  <div key={question.id} className="rounded-xl border border-slate-200 p-4">
+                    <p className="text-sm font-bold leading-6 text-slate-900">
+                      {index + 1}. {question.label}
+                    </p>
+
+                    {question.type === "text" ? (
+                      <textarea
+                        value={feedbackResponses[question.id] || ""}
+                        onChange={(event) =>
+                          updateFeedbackResponse(question.id, event.target.value)
+                        }
+                        className="mt-3 min-h-24 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-400"
+                      />
+                    ) : (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {question.options?.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            onClick={() => updateFeedbackResponse(question.id, option)}
+                            className={`rounded-xl border px-3 py-2 text-sm font-bold ${
+                              feedbackResponses[question.id] === option
+                                ? "border-blue-600 bg-blue-600 text-white"
+                                : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                            }`}
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-3 border-t border-slate-200 px-6 py-4">
+                <button
+                  type="button"
+                  onClick={() => setIsFeedbackOpen(false)}
+                  className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={submitFeedback}
+                  disabled={isSubmittingFeedback}
+                  className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isSubmittingFeedback ? "Menghantar..." : "Hantar Feedback"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </AppShell>
   );
