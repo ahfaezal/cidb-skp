@@ -79,6 +79,7 @@ type GeneratedQuestion = {
   answerScheme?: string[] | string;
   rubric?: RubricItem[];
   rationale?: string;
+  sourceReference?: string;
   skillRationale?: string;
   difficultyRationale?: string;
   locked?: boolean;
@@ -2002,6 +2003,15 @@ export default function QuestionBankPage() {
                         <p className="mt-2 text-xs leading-6 text-slate-600">
                           {item.rationale || "Rasional akan dipaparkan selepas skema dijana."}
                         </p>
+                        <div className="mt-4 border-t border-slate-200 pt-3">
+                          <p className="text-xs font-bold text-slate-700">
+                            Rujukan Soalan
+                          </p>
+                          <p className="mt-2 text-xs leading-5 text-slate-600">
+                            {item.sourceReference ||
+                              "Rujukan seksyen belum tersedia untuk draf lama."}
+                          </p>
+                        </div>
                         <div className="mt-4 border-t border-slate-200 pt-3">
                           <p className="text-xs font-bold text-slate-700">
                             Keterampilan Soalan

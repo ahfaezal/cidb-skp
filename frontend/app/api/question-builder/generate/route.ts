@@ -62,6 +62,7 @@ Return valid JSON only with this shape:
       "answerScheme": ["string"],
       "rubric": [{"criteria":"string","marks":5,"description":"string"}],
       "rationale": "string",
+      "sourceReference": "string",
       "skillRationale": "string",
       "difficultyRationale": "string"
     }
@@ -90,7 +91,8 @@ Rules:
   6. language,
   7. generateAnswerScheme,
   8. generateRubric.
-- REQUIRED: Use the selected language for question, options, answerScheme, rubric.description, rationale, skillRationale, difficultyRationale and analysis.detectedTopics: ${language}.
+- REQUIRED: Use the selected language for question, options, answerScheme, rubric.description, rationale, sourceReference, skillRationale, difficultyRationale and analysis.detectedTopics: ${language}.
+- REQUIRED: Every question must include sourceReference explaining where the question content comes from in the uploaded notes. Use this format only: "Rujukan: Seksyen [section number] - [section title/content]". Do not use page numbers or "m/s" because page numbers may change. If no clear section number exists, use "Rujukan: Bahagian [relevant section title]".
 - Keep system metadata values such as type, difficulty and skillCategory in the allowed labels so app validation does not fail.
 - REQUIRED: CIDB answer-option format: every objective answer option must begin with a clear active Kata Kerja / Verb. Do not start options with noun phrases, passive phrases, or general descriptions without an action verb.
 - For English, start answer options with verbs such as Identify, Select, Use, Check, Apply, Maintain, Inspect, Position, Label, Plan, Increase, Minimize or Verify.

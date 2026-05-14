@@ -291,7 +291,8 @@ Peraturan wajib:
 - Jana tepat mengikut jumlah soalan yang diminta untuk jenis yang dipilih.
 - Jika jenis soalan tidak dipilih, jangan jana soalan jenis tersebut walaupun nilai count wujud dalam tetapan.
 - Jumlah questions array mesti tepat {total_questions}. Jangan lebih dan jangan kurang.
-- Semua teks kandungan dalam question, options, combinationItems, answerScheme, rubric.description, rationale, skillRationale, difficultyRationale dan analysis.detectedTopics mesti menggunakan bahasa yang dipilih pengguna: {settings.language}.
+- Semua teks kandungan dalam question, options, combinationItems, answerScheme, rubric.description, rationale, sourceReference, skillRationale, difficultyRationale dan analysis.detectedTopics mesti menggunakan bahasa yang dipilih pengguna: {settings.language}.
+- Setiap soalan mesti mempunyai sourceReference yang menerangkan sumber kandungan soalan dalam nota. Format wajib: "Rujukan: Seksyen [nombor seksyen] - [tajuk/kandungan seksyen]". Jangan gunakan nombor muka surat atau "m/s" kerana muka surat boleh berubah. Jika tiada nombor seksyen jelas, gunakan "Rujukan: Bahagian [tajuk bahagian berkaitan]".
 - Kekalkan nilai metadata sistem seperti type, difficulty, skillCategory dan objectiveFormat dalam label asal yang dibenarkan supaya validation aplikasi tidak gagal.
 - Setiap soalan mesti mempunyai satu skillCategory daripada keterampilan yang dipilih sahaja.
 - Gunakan definisi keterampilan soalan di atas untuk menentukan kategori paling tepat bagi setiap soalan.
@@ -328,6 +329,7 @@ Pulangkan JSON sah sahaja, tanpa Markdown, dalam format:
         {{"criteria": "Kriteria", "marks": 5, "description": "Deskripsi ringkas"}}
       ],
       "rationale": "Rasional jawapan ringkas",
+      "sourceReference": "Rujukan: Seksyen 1.2 - Tajuk seksyen berkaitan",
       "skillRationale": "Rasional kategori keterampilan",
       "difficultyRationale": "Rasional aras soalan"
     }}
