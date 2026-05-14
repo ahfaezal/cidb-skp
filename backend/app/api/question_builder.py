@@ -300,9 +300,12 @@ Peraturan wajib:
 - Setiap soalan mesti mempunyai satu difficulty daripada aras yang dipilih sahaja.
 - Setiap soalan mesti mempunyai difficultyRationale yang menerangkan mengapa difficulty tersebut sesuai berdasarkan Bloom Taxonomy dan tuntutan kognitif soalan.
 - Soalan objektif mesti ada 4 pilihan A-D, correctAnswer, rationale ringkas dan answerScheme jika diminta.
+- Semua pilihan jawapan objektif perlu mematuhi format CIDB: teks jawapan mesti bermula dengan Kata Kerja / Verb yang jelas dan aktif. Elakkan pilihan jawapan bermula dengan kata nama, frasa pasif atau penerangan umum tanpa kata kerja.
+- Jika bahasa ialah English, mulakan pilihan jawapan dengan verb seperti Identify, Select, Use, Check, Apply, Maintain, Inspect, Position, Label, Plan, Increase, Minimize atau Verify.
+- Jika bahasa ialah Bahasa Melayu, mulakan pilihan jawapan dengan kata kerja seperti Kenal pasti, Pilih, Gunakan, Semak, Laksanakan, Kekalkan, Periksa, Letakkan, Labelkan, Rancang, Tingkatkan, Kurangkan atau Sahkan.
 - Jana tepat {settings.objectiveSingleCount} soalan objektif dengan objectiveFormat "Soalan Satu (1) Pilihan" dan tepat {settings.objectiveCombinationCount} soalan objektif dengan objectiveFormat "Soalan Aneka Gabungan".
-- Untuk objectiveFormat "Soalan Satu (1) Pilihan", pilihan jawapan objektif mesti disusun daripada teks paling pendek kepada paling panjang. Label A-D mesti ikut susunan baharu dan correctAnswer mesti merujuk label baharu yang betul.
-- Untuk objectiveFormat "Soalan Aneka Gabungan", bina 4 item pernyataan dalam field combinationItems menggunakan label I, II, III dan IV. Susun item I-IV daripada teks paling pendek kepada paling panjang. Field options wajib menggunakan kombinasi tetap A-D. Jika bahasa ialah English, gunakan "and"; jika bahasa ialah Bahasa Melayu, gunakan "dan". Jangan ubah kedudukan pilihan A-D ini.
+- Untuk objectiveFormat "Soalan Satu (1) Pilihan", setiap pilihan A-D mesti bermula dengan Kata Kerja / Verb dan pilihan jawapan objektif mesti disusun daripada teks paling pendek kepada paling panjang. Label A-D mesti ikut susunan baharu dan correctAnswer mesti merujuk label baharu yang betul.
+- Untuk objectiveFormat "Soalan Aneka Gabungan", bina 4 item pernyataan dalam field combinationItems menggunakan label I, II, III dan IV. Setiap item I-IV mesti bermula dengan Kata Kerja / Verb. Susun item I-IV daripada teks paling pendek kepada paling panjang. Field options wajib menggunakan kombinasi tetap A-D. Jika bahasa ialah English, gunakan "and"; jika bahasa ialah Bahasa Melayu, gunakan "dan". Jangan ubah kedudukan pilihan A-D ini.
 - Soalan subjektif mesti ada answerScheme dalam bentuk poin utama jika diminta.
 - Rubrik hanya untuk soalan subjektif dan wajib disediakan jika generateRubric ialah Ya.
 - Jika nota tidak cukup untuk menjana soalan berkualiti, pulangkan JSON dengan questions kosong dan analysis.detectedTopics yang menerangkan isu tersebut.

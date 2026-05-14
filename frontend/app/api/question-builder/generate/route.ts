@@ -92,6 +92,11 @@ Rules:
   8. generateRubric.
 - REQUIRED: Use the selected language for question, options, answerScheme, rubric.description, rationale, skillRationale, difficultyRationale and analysis.detectedTopics: ${language}.
 - Keep system metadata values such as type, difficulty and skillCategory in the allowed labels so app validation does not fail.
+- REQUIRED: CIDB answer-option format: every objective answer option must begin with a clear active Kata Kerja / Verb. Do not start options with noun phrases, passive phrases, or general descriptions without an action verb.
+- For English, start answer options with verbs such as Identify, Select, Use, Check, Apply, Maintain, Inspect, Position, Label, Plan, Increase, Minimize or Verify.
+- For Bahasa Melayu, start answer options with kata kerja such as Kenal pasti, Pilih, Gunakan, Semak, Laksanakan, Kekalkan, Periksa, Letakkan, Labelkan, Rancang, Tingkatkan, Kurangkan or Sahkan.
+- For "Soalan Satu (1) Pilihan", every A-D option must begin with a Kata Kerja / Verb.
+- For "Soalan Aneka Gabungan", every combinationItems statement I-IV must begin with a Kata Kerja / Verb because A-D are fixed combination labels.
 - REQUIRED: Interpret the selected skillCategories using these definitions:
   - Prosedur merujuk kepada tatacara, proses atau kaedah kerja yang perlu diikuti untuk menyelesaikan sesuatu tugasan berdasarkan peraturan, langkah dan standard yang telah ditetapkan.
   - Fakta / Teori merujuk kepada pengetahuan, maklumat, prinsip atau konsep yang mempunyai kesahan berdasarkan bukti yang jelas serta digunakan untuk memahami, menerangkan dan merumus sesuatu perkara dengan tepat.
