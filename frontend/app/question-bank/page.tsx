@@ -119,6 +119,16 @@ type SavedQuestionDraft = {
   updatedAt: string;
 };
 
+type QuestionFeedbackRecord = {
+  id: number;
+  ownerRef: string;
+  ownerName: string;
+  ownerRole: UserRole;
+  projectRef: string;
+  responses: Record<string, string>;
+  createdAt: string;
+};
+
 type UserProfile = {
   ownerRef: string;
   ownerName: string;
@@ -584,8 +594,11 @@ export default function QuestionBankPage() {
   const [editingQuestionId, setEditingQuestionId] = useState("");
   const [editingQuestion, setEditingQuestion] = useState<GeneratedQuestion | null>(null);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isFeedbackResultsOpen, setIsFeedbackResultsOpen] = useState(false);
   const [isDraftSummaryOpen, setIsDraftSummaryOpen] = useState(false);
   const [feedbackResponses, setFeedbackResponses] = useState<Record<string, string>>({});
+  const [feedbackItems, setFeedbackItems] = useState<QuestionFeedbackRecord[]>([]);
+  const [isLoadingFeedback, setIsLoadingFeedback] = useState(false);
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     if (typeof window === "undefined") {
@@ -664,6 +677,25 @@ export default function QuestionBankPage() {
       (a, b) => b.questionCount - a.questionCount || b.draftCount - a.draftCount,
     );
   }, [savedDrafts]);
+  const feedbackSummary = useMemo(() => {
+    const uniqueUsers = new Set(
+      feedbackItems.map((item) => item.ownerRef || `${item.ownerName}-${item.projectRef}`),
+    );
+    const averageHelpfulnessValues = feedbackItems
+      .map((item) => Number(item.responses.overallHelpfulness))
+      .filter((value) => Number.isFinite(value));
+    const averageHelpfulness =
+      averageHelpfulnessValues.length > 0
+        ? averageHelpfulnessValues.reduce((total, value) => total + value, 0) /
+          averageHelpfulnessValues.length
+        : 0;
+
+    return {
+      totalResponses: feedbackItems.length,
+      uniqueUsers: uniqueUsers.size,
+      averageHelpfulness,
+    };
+  }, [feedbackItems]);
   const activeFileRecords: QuestionFileRecord[] = generatedFileRecords.length
     ? generatedFileRecords
     : uploadedFiles.map(({ id, name, size, type }) => ({
@@ -713,6 +745,29 @@ export default function QuestionBankPage() {
       setIsLoadingDrafts(false);
     }
   }, [authHeaders, draftScope, effectiveUserProfile]);
+
+  const loadFeedbackResults = useCallback(async () => {
+    setIsLoadingFeedback(true);
+    setError("");
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/question-feedback/`, {
+        headers: authHeaders(),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.detail || "Feedback gagal dimuatkan.");
+      }
+
+      setFeedbackItems((await response.json()) as QuestionFeedbackRecord[]);
+      setIsFeedbackResultsOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Feedback gagal dimuatkan.");
+    } finally {
+      setIsLoadingFeedback(false);
+    }
+  }, [authHeaders]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1208,6 +1263,21 @@ export default function QuestionBankPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            {effectiveUserProfile.ownerRole === "Super Admin" ? (
+              <button
+                type="button"
+                onClick={loadFeedbackResults}
+                disabled={isLoadingFeedback}
+                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isLoadingFeedback ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MessageSquare className="h-4 w-4" />
+                )}
+                Lihat Feedback
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={() => setIsFeedbackOpen(true)}
@@ -2340,6 +2410,111 @@ export default function QuestionBankPage() {
                 >
                   {isSubmittingFeedback ? "Menghantar..." : "Hantar Feedback"}
                 </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {isFeedbackResultsOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+            <div className="max-h-[92vh] w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+              <div className="border-b border-slate-200 px-6 py-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-blue-700">
+                      Super Admin
+                    </p>
+                    <h2 className="mt-1 text-xl font-bold text-slate-900">
+                      Hasil Feedback Question Bank
+                    </h2>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Semua maklum balas pengguna yang dihantar selepas login dipaparkan di sini.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsFeedbackResultsOpen(false)}
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                  >
+                    Tutup
+                  </button>
+                </div>
+
+                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-bold uppercase text-slate-500">Jumlah Feedback</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">
+                      {feedbackSummary.totalResponses}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-bold uppercase text-slate-500">Pengguna Terlibat</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">
+                      {feedbackSummary.uniqueUsers}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <p className="text-xs font-bold uppercase text-slate-500">Purata Bantuan</p>
+                    <p className="mt-1 text-2xl font-bold text-slate-900">
+                      {feedbackSummary.averageHelpfulness
+                        ? `${feedbackSummary.averageHelpfulness.toFixed(1)} / 5`
+                        : "-"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="max-h-[62vh] overflow-y-auto px-6 py-5">
+                {feedbackItems.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center">
+                    <MessageSquare className="mx-auto h-8 w-8 text-slate-400" />
+                    <h3 className="mt-3 text-lg font-bold text-slate-900">
+                      Belum ada feedback dihantar
+                    </h3>
+                    <p className="mt-1 text-sm text-slate-600">
+                      Senarai ini akan terisi selepas pengguna menghantar borang feedback.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {feedbackItems.map((item) => (
+                      <article
+                        key={item.id}
+                        className="rounded-2xl border border-slate-200 bg-white p-5"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                          <div>
+                            <h3 className="text-base font-bold text-slate-900">
+                              {item.ownerName || "Pengguna"}
+                            </h3>
+                            <p className="mt-1 text-sm text-slate-600">
+                              {item.ownerRole} - {item.projectRef || "-"}
+                            </p>
+                          </div>
+                          <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">
+                            {formatDateTime(item.createdAt)}
+                          </span>
+                        </div>
+
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          {feedbackQuestions.map((question, index) => (
+                            <div
+                              key={question.id}
+                              className="rounded-xl border border-slate-100 bg-slate-50 p-4"
+                            >
+                              <p className="text-xs font-bold uppercase leading-5 text-slate-500">
+                                {index + 1}. {question.label}
+                              </p>
+                              <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-900">
+                                {item.responses[question.id] || "-"}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
