@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
+  Download,
   Edit3,
   FileText,
   Loader2,
@@ -472,6 +473,19 @@ function formatDateTime(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function sanitizeFileName(value: string) {
+  return value.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function splitOption(option: string) {
@@ -1206,6 +1220,128 @@ export default function QuestionBankPage() {
     window.print();
   }
 
+  function downloadDocumentMode() {
+    if (filteredQuestions.length === 0) {
+      setError("Tiada soalan untuk dimuat turun.");
+      return;
+    }
+
+    const documentTitle = getDocumentTitleParts(activeFileRecords);
+    const questionPages = filteredQuestions
+      .map((item, index) => {
+        const combinationItems =
+          item.objectiveFormat === "Soalan Aneka Gabungan" && item.combinationItems?.length
+            ? `<div class="combination-items">${item.combinationItems
+                .map((combinationItem) => {
+                  const parsed = splitRomanItem(combinationItem);
+                  return `<div class="option-row"><span>${escapeHtml(parsed.label)}.</span><span>${escapeHtml(parsed.text)}</span></div>`;
+                })
+                .join("")}</div>`
+            : "";
+        const options =
+          item.type === "Objektif" && item.options?.length
+            ? `<div class="options">${item.options
+                .map((option) => {
+                  const parsed = splitOption(option);
+                  const isCorrect = parsed.label === item.correctAnswer;
+                  return `<div class="option-row ${isCorrect ? "correct" : ""}"><span>${escapeHtml(parsed.label)}.</span><span>${escapeHtml(parsed.text)}</span></div>`;
+                })
+                .join("")}</div>`
+            : `<div class="subjective-line"></div>`;
+
+        return `<section class="page">
+  <div class="table-header">
+    <div>JENIS<br>SOALAN</div>
+    <div>KETERAMPILAN</div>
+    <div>NO. &amp; TAJUK</div>
+    <div>NO. SUB<br>MODUL</div>
+    <div>ARAS<br>KESUKARAN</div>
+  </div>
+  <div class="table-body">
+    <div>${escapeHtml(getDocumentQuestionType(item))}</div>
+    <div>${escapeHtml(getDocumentSkillCategory(item.skillCategory))}</div>
+    <div>${escapeHtml(documentTitle.displayTitle)}</div>
+    <div>${escapeHtml(documentTitle.code)}</div>
+    <div>${escapeHtml(getDocumentDifficulty(item.difficulty))}</div>
+  </div>
+  <div class="question">
+    <div class="question-row"><span>${index + 1}.</span><p>${escapeHtml(item.question)}</p></div>
+    ${combinationItems}
+    ${options}
+  </div>
+</section>`;
+      })
+      .join("");
+    const html = `<!doctype html>
+<html lang="ms">
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(documentTitle.displayTitle)}</title>
+  <style>
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #e5e7eb; font-family: Arial, sans-serif; color: #000; }
+    .page {
+      width: 210mm;
+      min-height: 297mm;
+      margin: 16px auto;
+      padding: 19mm 17.5mm;
+      background: #fff;
+      page-break-after: always;
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .table-header, .table-body {
+      display: grid;
+      grid-template-columns: 100px 118px 1fr 76px 106px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .table-header { background: #d9d9d9; border: 1px solid #000; text-transform: uppercase; }
+    .table-body { border-left: 1px solid #000; border-right: 1px solid #000; border-bottom: 1px solid #000; }
+    .table-header div, .table-body div {
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-right: 1px solid #000;
+    }
+    .table-body div { min-height: 96px; align-items: flex-start; padding: 12px 8px; }
+    .table-header div:last-child, .table-body div:last-child { border-right: 0; }
+    .question { margin-top: 28px; }
+    .question-row { display: grid; grid-template-columns: 20px 1fr; gap: 12px; }
+    .question-row p { margin: 0; }
+    .combination-items { display: grid; gap: 12px; margin-top: 24px; padding-left: 40px; }
+    .options { display: grid; gap: 20px; margin-top: 28px; padding-left: 40px; }
+    .option-row { display: grid; grid-template-columns: 24px 1fr; gap: 12px; }
+    .combination-items .option-row { grid-template-columns: 32px 1fr; gap: 8px; }
+    .correct { color: #dc2626; }
+    .subjective-line { min-height: 96px; margin-top: 32px; border-bottom: 1px dotted #64748b; }
+    @media print {
+      body { background: #fff; }
+      .page { margin: 0; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+${questionPages}
+</body>
+</html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${sanitizeFileName(documentTitle.displayTitle) || "document-mode"}.html`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function submitFeedback() {
     setError("");
     setDraftMessage("");
@@ -1657,7 +1793,7 @@ export default function QuestionBankPage() {
                 ))}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
                   {(["Builder", "Document"] as const).map((mode) => (
                     <button
@@ -1674,6 +1810,16 @@ export default function QuestionBankPage() {
                     </button>
                   ))}
                 </div>
+                {viewMode === "Document" && questions.length > 0 ? (
+                  <button
+                    type="button"
+                    onClick={downloadDocumentMode}
+                    className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download
+                  </button>
+                ) : null}
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input
@@ -1702,13 +1848,20 @@ export default function QuestionBankPage() {
 
             {viewMode === "Document" && questions.length > 0 ? (
               <div className="overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-4">
-                <div className="mx-auto min-h-[1123px] w-[794px] bg-white px-[66px] py-[72px] text-black shadow-sm">
-                  <div className="space-y-8 font-serif text-[16px] leading-[1.35]">
-                    {filteredQuestions.map((item, index) => {
-                      const documentTitle = getDocumentTitleParts(activeFileRecords);
+                <div className="mx-auto grid w-[794px] gap-6">
+                  {filteredQuestions.map((item, index) => {
+                    const documentTitle = getDocumentTitleParts(activeFileRecords);
 
-                      return (
-                        <section key={item.id} className="break-inside-avoid">
+                    return (
+                      <section
+                        key={item.id}
+                        className="min-h-[1123px] w-[794px] bg-white px-[66px] py-[72px] text-black shadow-sm"
+                        style={{
+                          fontFamily: "Arial, sans-serif",
+                          pageBreakAfter: "always",
+                        }}
+                      >
+                        <div className="text-[16px] font-bold leading-[1.35]">
                           <div className="grid grid-cols-[100px_118px_minmax(0,1fr)_76px_106px] border border-black bg-[#d9d9d9] text-center text-[12px] font-bold uppercase leading-tight">
                             <div className="flex min-h-11 items-center justify-center border-r border-black px-1 py-1">
                               JENIS<br />SOALAN
@@ -1744,8 +1897,8 @@ export default function QuestionBankPage() {
                             </div>
                           </div>
 
-                          <div className="mt-5 text-[16px] font-bold">
-                            <div className="grid grid-cols-[18px_1fr] gap-2">
+                          <div className="mt-7">
+                            <div className="grid grid-cols-[20px_1fr] gap-3">
                               <span>{index + 1}.</span>
                               <p>{item.question}</p>
                             </div>
@@ -1753,7 +1906,7 @@ export default function QuestionBankPage() {
                             {item.type === "Objektif" && item.options?.length ? (
                               <>
                                 {item.objectiveFormat === "Soalan Aneka Gabungan" && item.combinationItems?.length ? (
-                                  <div className="mt-5 grid gap-2 pl-9">
+                                  <div className="mt-6 grid gap-3 pl-10">
                                     {item.combinationItems.map((combinationItem) => {
                                       const parsed = splitRomanItem(combinationItem);
 
@@ -1769,12 +1922,18 @@ export default function QuestionBankPage() {
                                     })}
                                   </div>
                                 ) : null}
-                                <div className="mt-5 grid gap-4 pl-9">
+                                <div className="mt-7 grid gap-5 pl-10">
                                   {item.options.map((option) => {
                                     const parsed = splitOption(option);
+                                    const isCorrect = parsed.label === item.correctAnswer;
 
                                     return (
-                                      <div key={option} className="grid grid-cols-[22px_1fr] gap-2">
+                                      <div
+                                        key={option}
+                                        className={`grid grid-cols-[24px_1fr] gap-3 ${
+                                          isCorrect ? "text-red-600" : ""
+                                        }`}
+                                      >
                                         <span>{parsed.label}.</span>
                                         <span>{parsed.text}</span>
                                       </div>
@@ -1786,10 +1945,10 @@ export default function QuestionBankPage() {
                               <div className="mt-8 min-h-24 border-b border-dotted border-slate-500" />
                             )}
                           </div>
-                        </section>
-                      );
-                    })}
-                  </div>
+                        </div>
+                      </section>
+                    );
+                  })}
                 </div>
               </div>
             ) : isGenerating ? (
