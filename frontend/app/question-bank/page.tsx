@@ -692,9 +692,15 @@ export default function QuestionBankPage() {
     );
   }, [savedDrafts]);
   const feedbackSummary = useMemo(() => {
-    const uniqueUsers = new Set(
-      feedbackItems.map((item) => item.ownerRef || `${item.ownerName}-${item.projectRef}`),
-    );
+    const userMap = new Map<
+      string,
+      {
+        ownerName: string;
+        ownerRole: UserRole;
+        projectRef: string;
+        latestAt: string;
+      }
+    >();
     const averageHelpfulnessValues = feedbackItems
       .map((item) => Number(item.responses.overallHelpfulness))
       .filter((value) => Number.isFinite(value));
@@ -704,11 +710,52 @@ export default function QuestionBankPage() {
           averageHelpfulnessValues.length
         : 0;
 
+    feedbackItems.forEach((item) => {
+      const key = item.ownerRef || `${item.ownerName}-${item.projectRef}`;
+      const current = userMap.get(key);
+      if (!current || new Date(item.createdAt) > new Date(current.latestAt)) {
+        userMap.set(key, {
+          ownerName: item.ownerName || "Pengguna",
+          ownerRole: item.ownerRole,
+          projectRef: item.projectRef || "-",
+          latestAt: item.createdAt,
+        });
+      }
+    });
+
     return {
       totalResponses: feedbackItems.length,
-      uniqueUsers: uniqueUsers.size,
+      uniqueUsers: userMap.size,
       averageHelpfulness,
+      users: Array.from(userMap.values()).sort(
+        (a, b) => new Date(b.latestAt).getTime() - new Date(a.latestAt).getTime(),
+      ),
     };
+  }, [feedbackItems]);
+  const feedbackChartSummary = useMemo(() => {
+    return feedbackQuestions
+      .filter((question) => question.type !== "text")
+      .map((question) => {
+        const options = question.options || [];
+        const counts = new Map<string, number>();
+        options.forEach((option) => counts.set(option, 0));
+
+        feedbackItems.forEach((item) => {
+          const answer = item.responses[question.id];
+          if (!answer) return;
+          counts.set(answer, (counts.get(answer) || 0) + 1);
+        });
+
+        return {
+          id: question.id,
+          label: question.label,
+          total: Array.from(counts.values()).reduce((total, value) => total + value, 0),
+          options: Array.from(counts.entries()).map(([label, count]) => ({
+            label,
+            count,
+          })),
+        };
+      });
   }, [feedbackItems]);
   const activeFileRecords: QuestionFileRecord[] = generatedFileRecords.length
     ? generatedFileRecords
@@ -2621,6 +2668,9 @@ ${questionPages}
                     </p>
                   </div>
                 </div>
+                <p className="mt-3 text-xs font-semibold text-slate-500">
+                  Nota: jumlah ini ialah rekod yang berjaya diterima dan disimpan oleh server.
+                </p>
               </div>
 
               <div className="max-h-[62vh] overflow-y-auto px-6 py-5">
@@ -2636,6 +2686,71 @@ ${questionPages}
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    <div className="grid gap-4 xl:grid-cols-[1fr_1.2fr]">
+                      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <h3 className="text-base font-bold text-slate-900">
+                          Pengguna Yang Telah Menghantar
+                        </h3>
+                        <div className="mt-4 space-y-3">
+                          {feedbackSummary.users.map((item) => (
+                            <div
+                              key={`${item.ownerName}-${item.latestAt}`}
+                              className="rounded-xl border border-slate-100 bg-slate-50 p-3"
+                            >
+                              <p className="text-sm font-bold text-slate-900">
+                                {item.ownerName}
+                              </p>
+                              <p className="mt-1 text-xs font-semibold text-slate-600">
+                                {item.ownerRole} - {item.projectRef}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {formatDateTime(item.latestAt)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <h3 className="text-base font-bold text-slate-900">
+                          Carta Ringkasan Feedback
+                        </h3>
+                        <div className="mt-4 space-y-5">
+                          {feedbackChartSummary.map((chart) => (
+                            <div key={chart.id} className="rounded-xl bg-slate-50 p-4">
+                              <p className="text-xs font-bold uppercase leading-5 text-slate-600">
+                                {chart.label}
+                              </p>
+                              <div className="mt-3 space-y-2">
+                                {chart.options.map((option) => {
+                                  const percent = chart.total
+                                    ? Math.round((option.count / chart.total) * 100)
+                                    : 0;
+
+                                  return (
+                                    <div key={option.label}>
+                                      <div className="mb-1 flex items-center justify-between gap-3 text-xs font-bold text-slate-700">
+                                        <span>{option.label}</span>
+                                        <span>
+                                          {option.count} ({percent}%)
+                                        </span>
+                                      </div>
+                                      <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                                        <div
+                                          className="h-full rounded-full bg-blue-600"
+                                          style={{ width: `${percent}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    </div>
+
                     {feedbackItems.map((item) => (
                       <article
                         key={item.id}
