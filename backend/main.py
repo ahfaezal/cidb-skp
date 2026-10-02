@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+import os
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import inspect, text
 
@@ -45,7 +46,7 @@ from app.models.performance_criteria_item import PerformanceCriteriaItem
 from app.api.question_builder import router as question_builder_router
 from app.models.question_builder_draft import QuestionBuilderDraft
 from app.models.user import User
-from app.services.auth_service import hash_password
+from app.services.auth_service import hash_password, require_staff
 
 Base.metadata.create_all(bind=engine)
 
@@ -159,8 +160,10 @@ ensure_users_columns()
 
 
 def seed_super_admin():
-    admin_email = "admin@skp.local"
-    admin_password = "Admin@12345"
+    admin_email = os.getenv("BOOTSTRAP_ADMIN_EMAIL")
+    admin_password = os.getenv("BOOTSTRAP_ADMIN_PASSWORD")
+    if not admin_email or not admin_password or len(admin_password) < 12:
+        return
 
     with SessionLocal() as db:
         if db.query(User).count() > 0:
@@ -185,28 +188,28 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "https://skp.pfh-ai.com,http://localhost:3000,http://127.0.0.1:3000").split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(cmcs_router)
-app.include_router(trades_router)
-app.include_router(trade_cmcs_mappings_router)
-app.include_router(trade_competencies_router)
-app.include_router(workflow_assignments_router)
-app.include_router(review_records_router)
-app.include_router(module_content_blocks_router)
-app.include_router(mapping_groupings_router)
-app.include_router(module_builder_ai_router)
-app.include_router(skp_modules_router)
-app.include_router(learning_packages_router)
-app.include_router(assessment_questions_router)
-app.include_router(competency_units_router)
-app.include_router(work_activities_router)
-app.include_router(performance_criteria_router)
-app.include_router(performance_criteria_items_router)
+app.include_router(cmcs_router, dependencies=[Depends(require_staff)])
+app.include_router(trades_router, dependencies=[Depends(require_staff)])
+app.include_router(trade_cmcs_mappings_router, dependencies=[Depends(require_staff)])
+app.include_router(trade_competencies_router, dependencies=[Depends(require_staff)])
+app.include_router(workflow_assignments_router, dependencies=[Depends(require_staff)])
+app.include_router(review_records_router, dependencies=[Depends(require_staff)])
+app.include_router(module_content_blocks_router, dependencies=[Depends(require_staff)])
+app.include_router(mapping_groupings_router, dependencies=[Depends(require_staff)])
+app.include_router(module_builder_ai_router, dependencies=[Depends(require_staff)])
+app.include_router(skp_modules_router, dependencies=[Depends(require_staff)])
+app.include_router(learning_packages_router, dependencies=[Depends(require_staff)])
+app.include_router(assessment_questions_router, dependencies=[Depends(require_staff)])
+app.include_router(competency_units_router, dependencies=[Depends(require_staff)])
+app.include_router(work_activities_router, dependencies=[Depends(require_staff)])
+app.include_router(performance_criteria_router, dependencies=[Depends(require_staff)])
+app.include_router(performance_criteria_items_router, dependencies=[Depends(require_staff)])
 app.include_router(question_feedback_router)
 app.include_router(question_builder_router)
 app.include_router(auth_router)

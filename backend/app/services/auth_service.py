@@ -33,7 +33,10 @@ def get_db():
 
 
 def _secret_key():
-    return os.getenv("AUTH_SECRET_KEY") or os.getenv("SECRET_KEY") or "skp-cidb-dev-secret"
+    secret = os.getenv("AUTH_SECRET_KEY") or os.getenv("SECRET_KEY")
+    if not secret or len(secret) < 32 or secret == "skp-cidb-dev-secret":
+        raise HTTPException(status_code=503, detail="Konfigurasi keselamatan belum lengkap. Hubungi pentadbir.")
+    return secret
 
 
 def _b64encode(data: bytes):
@@ -79,17 +82,17 @@ def create_access_token(user: User):
 
 
 def decode_access_token(token: str):
+    secret = _secret_key()
     try:
         body, signature = token.split(".", 1)
-        expected = hmac.new(_secret_key().encode("utf-8"), body.encode("utf-8"), hashlib.sha256).digest()
+        expected = hmac.new(secret.encode("utf-8"), body.encode("utf-8"), hashlib.sha256).digest()
         if not hmac.compare_digest(_b64decode(signature), expected):
             raise ValueError("Invalid signature")
         payload = json.loads(_b64decode(body))
+        if not isinstance(payload, dict) or int(payload["sub"]) <= 0 or int(payload["exp"]) <= int(time.time()):
+            raise ValueError("Invalid or expired token")
     except Exception as exc:
         raise HTTPException(status_code=401, detail="Token tidak sah.") from exc
-
-    if int(payload.get("exp", 0)) < int(time.time()):
-        raise HTTPException(status_code=401, detail="Sesi telah tamat.")
 
     return payload
 
@@ -117,3 +120,9 @@ def require_roles(*roles: str):
         return user
 
     return dependency
+
+
+def require_staff(user: User = Depends(get_current_user)):
+    if user.role == "Ahli Panel Pembangun":
+        raise HTTPException(status_code=403, detail="Akses panel terhad kepada pembangunan soalan.")
+    return user

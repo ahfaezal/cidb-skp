@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.services.ai_service import limit_login
 from app.services.auth_service import (
     ALLOWED_ROLES,
     create_access_token,
@@ -59,9 +60,9 @@ def user_to_response(user: User):
     )
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(limit_login)])
 def login(data: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email.lower()).first()
+    user = db.query(User).filter(User.email == data.email.lower().strip()).first()
 
     if not user or not user.is_active or not verify_password(data.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Email atau kata laluan tidak sah.")
@@ -102,6 +103,8 @@ def update_user(
     user.role = role
     user.project_ref = data.projectRef.strip() or "SKP-CIDB"
     if data.password and data.password.strip():
+        if len(data.password) < 12 or data.password in {"Admin@12345", "User@12345"}:
+            raise HTTPException(422, "Gunakan kata laluan unik sekurang-kurangnya 12 aksara.")
         user.password_hash = hash_password(data.password)
 
     db.commit()
@@ -143,15 +146,17 @@ def create_user(
     _: User = Depends(require_roles("Super Admin")),
     db: Session = Depends(get_db),
 ):
+    if len(data.password) < 12 or data.password in {"Admin@12345", "User@12345"}:
+        raise HTTPException(422, "Gunakan kata laluan unik sekurang-kurangnya 12 aksara.")
     role = data.role.strip()
     if role not in ALLOWED_ROLES:
         raise HTTPException(status_code=422, detail="Peranan pengguna tidak sah.")
 
-    if db.query(User).filter(User.email == data.email.lower()).first():
+    if db.query(User).filter(User.email == data.email.lower().strip()).first():
         raise HTTPException(status_code=409, detail="Email pengguna telah wujud.")
 
     user = User(
-        email=data.email.lower(),
+        email=data.email.lower().strip(),
         name=data.name.strip(),
         role=role,
         project_ref=data.projectRef.strip() or "SKP-CIDB",

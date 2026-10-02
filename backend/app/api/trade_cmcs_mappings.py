@@ -1,9 +1,10 @@
+from app.services.ai_service import ai_user, request_ai
+from app.models.user import User
 import json
 import os
 import re
 from typing import List
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -197,6 +198,7 @@ def get_mappings_by_trade(trade_id: int, db: Session = Depends(get_db)):
 @router.post("/ai-draft", response_model=TradeCMCSMappingAIDraftResponse)
 async def generate_ai_mapping_draft(
     data: TradeCMCSMappingAIDraftRequest,
+    current_user: User = Depends(ai_user),
     db: Session = Depends(get_db),
 ):
     api_key = os.getenv("OPENAI_API_KEY")
@@ -299,29 +301,9 @@ Guidelines:
         "text": {"format": {"type": "json_object"}},
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=60) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/responses",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=exc.response.text,
-        ) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="AI generation request failed.",
-        ) from exc
+    response_data = await request_ai(payload, current_user.id)
 
-    output_text = extract_response_text(response.json())
+    output_text = extract_response_text(response_data)
 
     try:
         draft = json.loads(output_text)

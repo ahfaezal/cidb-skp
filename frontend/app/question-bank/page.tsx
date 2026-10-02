@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/layouts/AppShell";
-import { API_BASE_URL } from "@/src/lib/api";
+import { API_BASE_URL, apiFetch } from "@/src/lib/api";
 import { useAuth } from "@/src/lib/auth";
 
 type QuestionType = "Objektif" | "Subjektif";
@@ -508,10 +508,7 @@ function normalizeCombinationItems(items: string[] = []) {
   const romanLabels = ["I", "II", "III", "IV"];
   return [...items]
     .map(splitRomanItem)
-    .sort((a, b) => {
-      const lengthDiff = a.text.length - b.text.length;
-      return lengthDiff || a.text.localeCompare(b.text);
-    })
+    // Keep I–IV identities: changing their order changes the answer combination.
     .slice(0, 4)
     .map((item, index) => `${romanLabels[index]}. ${item.text}`);
 }
@@ -601,6 +598,10 @@ export default function QuestionBankPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [savedDrafts, setSavedDrafts] = useState<SavedQuestionDraft[]>([]);
+  const [activeDraftVersion, setActiveDraftVersion] = useState<string | null>(null);
+  const [exportAudience, setExportAudience] = useState<"candidate" | "panel">("panel");
+  const [savedSnapshot, setSavedSnapshot] = useState("");
+  const [recoveryDraft, setRecoveryDraft] = useState<SavedQuestionDraft | null>(null);
   const [activeDraftId, setActiveDraftId] = useState<number | null>(null);
   const [isLoadingDrafts, setIsLoadingDrafts] = useState(false);
   const [error, setError] = useState("");
@@ -632,6 +633,38 @@ export default function QuestionBankPage() {
     }
   });
   const [draftScope, setDraftScope] = useState<DraftScope>("mine");
+
+  useEffect(() => {
+    if (!user) return;
+    const timer = window.setTimeout(() => {
+      try {
+        const saved = window.sessionStorage.getItem(`skp-question-recovery-${user.id}`);
+        if (saved) setRecoveryDraft(JSON.parse(saved));
+      } catch { /* Damaged browser cache must not block the editor. */ }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [user]);
+  useEffect(() => {
+    if (!user || !questions.length) return;
+    const timer = window.setTimeout(() => {
+      try {
+        window.sessionStorage.setItem(`skp-question-recovery-${user.id}`, JSON.stringify({ id: activeDraftId || 0, updatedAt: activeDraftVersion || "", questions, analysis, files: generatedFileRecords, settings: { questionTypes, objectiveCount, objectiveSingleCount, objectiveCombinationCount, subjectiveCount, skillCategories, difficultyLevels, language, generateAnswerScheme, generateRubric } }));
+      } catch { /* The unsaved warning remains active if browser storage is full. */ }
+    }, 500);
+    return () => window.clearTimeout(timer);
+  }, [user, questions, analysis, activeDraftId, activeDraftVersion, generatedFileRecords, questionTypes, objectiveCount, objectiveSingleCount, objectiveCombinationCount, subjectiveCount, skillCategories, difficultyLevels, language, generateAnswerScheme, generateRubric]);
+
+  const hasUnsavedChanges = questions.length > 0 && JSON.stringify(questions) !== savedSnapshot;
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    const navigate = (event: MouseEvent) => {
+      const link = (event.target as Element).closest("a[href]");
+      if (link && !window.confirm("Draf belum disimpan. Tinggalkan halaman?")) { event.preventDefault(); event.stopPropagation(); }
+    };
+    window.addEventListener("beforeunload", warn); document.addEventListener("click", navigate, true);
+    return () => { window.removeEventListener("beforeunload", warn); document.removeEventListener("click", navigate, true); };
+  }, [hasUnsavedChanges]);
 
   const totalQuestions =
     (questionTypes.includes("Objektif") ? objectiveCount : 0) +
@@ -792,16 +825,18 @@ export default function QuestionBankPage() {
         projectRef: profile.projectRef,
         scope,
       });
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_BASE_URL}/question-builder/drafts?${params.toString()}`,
         {
           headers: authHeaders(),
         },
       );
 
-      if (!response.ok) return;
+      if (!response.ok) throw new Error("Senarai draf gagal dimuatkan. Cuba semula.");
 
       setSavedDrafts((await response.json()) as SavedQuestionDraft[]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Senarai draf gagal dimuatkan.");
     } finally {
       setIsLoadingDrafts(false);
     }
@@ -812,7 +847,7 @@ export default function QuestionBankPage() {
     setError("");
 
     try {
-      const response = await fetch(`${API_BASE_URL}/question-feedback/`, {
+      const response = await apiFetch(`${API_BASE_URL}/question-feedback/`, {
         headers: authHeaders(),
       });
 
@@ -849,6 +884,9 @@ export default function QuestionBankPage() {
 
   function loadDraft(draft: SavedQuestionDraft) {
     const draftLanguage = draft.settings.language || "Bahasa Melayu";
+    if (hasUnsavedChanges && !window.confirm("Perubahan belum disimpan. Teruskan membuka draf lain?")) return;
+    setActiveDraftVersion(draft.updatedAt);
+    setSavedSnapshot(JSON.stringify(normalizeQuestions(draft.questions, draftLanguage)));
     setActiveDraftId(draft.id);
     setQuestions(normalizeQuestions(draft.questions, draftLanguage));
     setAnalysis(draft.analysis || initialAnalysis);
@@ -885,6 +923,8 @@ export default function QuestionBankPage() {
       )
     );
 
+    const addedSize = supported.reduce((total, file) => total + file.size, 0);
+    if (supported.length !== files.length || supported.some(file => file.size === 0 || file.size > 10 * 1024 * 1024) || uploadedFiles.length + supported.length > 5 || uploadedFiles.reduce((total, file) => total + file.size, 0) + addedSize > 20 * 1024 * 1024) { setError("Gunakan PDF, DOCX atau TXT: maksimum 5 fail, 10 MB setiap fail dan 20 MB keseluruhan."); return; }
     setUploadedFiles((current) => [
       ...current,
       ...supported.map((file) => ({
@@ -905,7 +945,7 @@ export default function QuestionBankPage() {
   }
 
   function updateObjectiveCount(value: number) {
-    const nextValue = Math.max(0, value);
+    const nextValue = Math.min(30, Math.max(0, value));
     const nextCombination = Math.min(objectiveCombinationCount, nextValue);
     setObjectiveCount(nextValue);
     setObjectiveCombinationCount(nextCombination);
@@ -941,6 +981,7 @@ export default function QuestionBankPage() {
   }
 
   async function generateQuestions() {
+    if (questions.length && !window.confirm("Penjanaan baharu akan menggantikan soalan dalam paparan. Pastikan draf telah disimpan. Teruskan?")) return;
     setError("");
     setDraftMessage("");
 
@@ -967,6 +1008,7 @@ export default function QuestionBankPage() {
       return;
     }
 
+    if (totalQuestions < 1 || totalQuestions > 30) { setError("Pilih 1 hingga 30 soalan keseluruhan."); return; }
     setIsGenerating(true);
 
     try {
@@ -998,7 +1040,7 @@ export default function QuestionBankPage() {
         formData.append("files", item.file, item.name);
       });
 
-      const response = await fetch(`${API_BASE_URL}/question-builder/generate`, {
+      const response = await apiFetch(`${API_BASE_URL}/question-builder/generate`, {
         method: "POST",
         headers: authHeaders(),
         body: formData,
@@ -1015,6 +1057,8 @@ export default function QuestionBankPage() {
         files?: QuestionFileRecord[];
       };
 
+      setActiveDraftVersion(null);
+      setSavedSnapshot("");
       setActiveDraftId(null);
       setQuestions(normalizeQuestions(payload.questions, language));
       setAnalysis(payload.analysis);
@@ -1051,7 +1095,7 @@ export default function QuestionBankPage() {
         generateAnswerScheme,
         generateRubric,
       };
-      const response = await fetch(
+      const response = await apiFetch(
         activeDraftId
           ? `${API_BASE_URL}/question-builder/drafts/${activeDraftId}`
           : `${API_BASE_URL}/question-builder/drafts`,
@@ -1069,6 +1113,7 @@ export default function QuestionBankPage() {
             projectRef: user?.projectRef || effectiveUserProfile.projectRef,
             visibility: draftScope === "project" ? "Project" : "Private",
             status: "Draft",
+            expectedUpdatedAt: activeDraftVersion,
             settings,
             files: activeFileRecords,
             questions: normalizeQuestions(questions, language),
@@ -1082,7 +1127,9 @@ export default function QuestionBankPage() {
         throw new Error(getGenerationErrorMessage(payload));
       }
 
-      const payload = (await response.json()) as { id: number; message: string };
+      const payload = (await response.json()) as { id: number; message: string; updatedAt: string };
+      setActiveDraftVersion(payload.updatedAt);
+      setSavedSnapshot(JSON.stringify(normalizeQuestions(questions, language)));
       setActiveDraftId(payload.id);
       setDraftMessage(`${payload.message} ID Draf: ${payload.id}`);
       await loadSavedDrafts();
@@ -1164,7 +1211,7 @@ export default function QuestionBankPage() {
       return;
     }
 
-    if (uploadedFiles.length === 0) {
+    if (uploadedFiles.length === 0 && !activeDraftId) {
       setError("Regenerate perlukan fail nota asal. Muat naik nota semula jika draf dimuat daripada database.");
       return;
     }
@@ -1174,6 +1221,7 @@ export default function QuestionBankPage() {
     try {
       const formData = new FormData();
       formData.append("ownerRef", effectiveUserProfile.ownerRef);
+      if (!uploadedFiles.length && activeDraftId) formData.append("draftId", String(activeDraftId));
       formData.append(
         "settings",
         JSON.stringify({
@@ -1202,7 +1250,7 @@ export default function QuestionBankPage() {
         formData.append("files", file.file, file.name);
       });
 
-      const response = await fetch(`${API_BASE_URL}/question-builder/generate`, {
+      const response = await apiFetch(`${API_BASE_URL}/question-builder/generate`, {
         method: "POST",
         headers: authHeaders(),
         body: formData,
@@ -1274,7 +1322,7 @@ export default function QuestionBankPage() {
     }
 
     const documentTitle = getDocumentTitleParts(activeFileRecords);
-    const questionPages = filteredQuestions
+    const questionPages = questions
       .map((item, index) => {
         const combinationItems =
           item.objectiveFormat === "Soalan Aneka Gabungan" && item.combinationItems?.length
@@ -1290,7 +1338,7 @@ export default function QuestionBankPage() {
             ? `<div class="options">${item.options
                 .map((option) => {
                   const parsed = splitOption(option);
-                  const isCorrect = parsed.label === item.correctAnswer;
+                  const isCorrect = exportAudience === "panel" && parsed.label === item.correctAnswer;
                   return `<div class="option-row ${isCorrect ? "correct" : ""}"><span>${escapeHtml(parsed.label)}.</span><span>${escapeHtml(parsed.text)}</span></div>`;
                 })
                 .join("")}</div>`
@@ -1315,6 +1363,7 @@ export default function QuestionBankPage() {
     <div class="question-row"><span>${index + 1}.</span><p>${escapeHtml(item.question)}</p></div>
     ${combinationItems}
     ${options}
+    ${exportAudience === "panel" ? `<div class="scheme"><p>UNTUK SEMAKAN PANEL</p><p>Jawapan: ${escapeHtml(item.correctAnswer || "Subjektif")}</p>${toList(item.answerScheme).map(line => `<p>${escapeHtml(line)}</p>`).join("")}${(item.rubric || []).map(row => `<p>${escapeHtml(row.criteria)} (${row.marks} markah): ${escapeHtml(row.description || "")}</p>`).join("")}<p>${escapeHtml(item.sourceReference || "Rujukan perlu disemak oleh panel")}</p></div>` : ""}
   </div>
 </section>`;
       })
@@ -1367,6 +1416,7 @@ export default function QuestionBankPage() {
     .option-row { display: grid; grid-template-columns: 24px 1fr; gap: 12px; }
     .combination-items .option-row { grid-template-columns: 32px 1fr; gap: 8px; }
     .correct { color: #dc2626; }
+    .scheme { font-size: 12px; font-weight: normal; margin-top: 24px; border-top: 1px solid #999; }
     .subjective-line { min-height: 96px; margin-top: 32px; border-bottom: 1px dotted #64748b; }
     @media print {
       body { background: #fff; }
@@ -1382,7 +1432,7 @@ ${questionPages}
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `${sanitizeFileName(documentTitle.displayTitle) || "document-mode"}.html`;
+    link.download = `${exportAudience}-${sanitizeFileName(documentTitle.displayTitle) || "document-mode"}.html`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1404,7 +1454,7 @@ ${questionPages}
     setIsSubmittingFeedback(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/question-feedback/`, {
+      const response = await apiFetch(`${API_BASE_URL}/question-feedback/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1841,6 +1891,7 @@ ${questionPages}
               </div>
 
               <div className="flex flex-wrap gap-2">
+                <select aria-label="Jenis dokumen eksport" value={exportAudience} onChange={event => setExportAudience(event.target.value as "candidate" | "panel")} className="rounded-lg border p-2 text-sm"><option value="panel">Panel: jawapan, skema, rubrik</option><option value="candidate">Calon: tanpa jawapan</option></select>
                 <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-1">
                   {(["Builder", "Document"] as const).map((mode) => (
                     <button
@@ -1864,14 +1915,14 @@ ${questionPages}
                     className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100"
                   >
                     <Download className="h-4 w-4" />
-                    Download
+                    Muat turun semua soalan (HTML)
                   </button>
                 ) : null}
                 <div className="relative">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                   <input
                     className="w-full rounded-lg border border-slate-200 py-2 pl-9 pr-4 text-sm md:w-56"
-                    placeholder="Cari soalan..."
+                    id="question-review" placeholder="Cari soalan..."
                     value={searchTerm}
                     onChange={(event) => setSearchTerm(event.target.value)}
                   />
@@ -1882,6 +1933,8 @@ ${questionPages}
               </div>
             </div>
 
+            {recoveryDraft && !questions.length && <div className="mb-4 rounded-xl bg-amber-50 p-4 text-sm">Terdapat salinan pemulihan dalam tab ini. Ia mungkin belum disimpan ke pelayan. <button className="font-bold underline" onClick={() => { loadDraft(recoveryDraft); setSavedSnapshot(""); setRecoveryDraft(null); setDraftMessage("Salinan pelayar dipulihkan. Simpan draf ke pelayan sebelum meneruskan."); }}>Pulihkan suntingan</button></div>}
+            {questions.length > 0 && <p className="mb-4 text-sm font-semibold">{hasUnsavedChanges ? "Perubahan belum disimpan ke pelayan." : "Draf telah disimpan."}</p>}
             {error && (
               <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
                 {error}
@@ -1972,7 +2025,7 @@ ${questionPages}
                                 <div className="mt-7 grid gap-5 pl-10">
                                   {item.options.map((option) => {
                                     const parsed = splitOption(option);
-                                    const isCorrect = parsed.label === item.correctAnswer;
+                                    const isCorrect = exportAudience === "panel" && parsed.label === item.correctAnswer;
 
                                     return (
                                       <div
@@ -2530,7 +2583,7 @@ ${questionPages}
               </div>
             </div>
 
-            <button className="w-full rounded-2xl border border-blue-100 bg-blue-50 p-5 text-left shadow-sm hover:bg-blue-100">
+            <button onClick={() => { setViewMode("Builder"); setDraftMessage("Semak jawapan, skema, rubrik dan rujukan setiap soalan sebelum digunakan. Eksport Panel turut menyertakan maklumat ini."); document.getElementById("question-review")?.scrollIntoView({ behavior: "smooth" }); }} className="w-full rounded-2xl border border-blue-100 bg-blue-50 p-5 text-left shadow-sm hover:bg-blue-100">
               <p className="text-lg font-bold text-blue-700">Seterusnya</p>
               <p className="mt-1 text-sm text-blue-600">Semak Skema & Rubrik</p>
             </button>

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Pencil, Trash2, UserPlus, X } from "lucide-react";
 
 import { AppShell } from "@/components/layouts/AppShell";
-import { API_BASE_URL } from "@/src/lib/api";
+import { API_BASE_URL, apiFetch } from "@/src/lib/api";
 import { AuthUser, UserRole, useAuth } from "@/src/lib/auth";
 
 const roleOptions: UserRole[] = [
@@ -23,7 +23,7 @@ export default function UsersPage() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<UserRole>("Fasilitator");
   const [projectRef, setProjectRef] = useState("SKP-CIDB");
-  const [password, setPassword] = useState("User@12345");
+  const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -32,7 +32,7 @@ export default function UsersPage() {
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/users`, {
+      const response = await apiFetch(`${API_BASE_URL}/auth/users`, {
         headers: authHeaders(),
       });
 
@@ -62,7 +62,7 @@ export default function UsersPage() {
     setEmail("");
     setRole("Fasilitator");
     setProjectRef("SKP-CIDB");
-    setPassword("User@12345");
+    setPassword("");
     setEditingUserId(null);
   }
 
@@ -85,7 +85,7 @@ export default function UsersPage() {
 
     try {
       const isEditing = editingUserId !== null;
-      const response = await fetch(
+      const response = await apiFetch(
         isEditing
           ? `${API_BASE_URL}/auth/users/${editingUserId}`
           : `${API_BASE_URL}/auth/users`,
@@ -134,7 +134,7 @@ export default function UsersPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/users/${item.id}`, {
+      const response = await apiFetch(`${API_BASE_URL}/auth/users/${item.id}`, {
         method: "DELETE",
         headers: {
           ...authHeaders(),
@@ -240,11 +240,12 @@ export default function UsersPage() {
                   type="password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
+                  minLength={12}
                   required={!editingUserId}
                   placeholder={
                     editingUserId
                       ? "Password baharu, kosongkan jika tidak reset"
-                      : "Password sementara"
+                      : "Kata laluan unik, minimum 12 aksara"
                   }
                   className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-blue-400"
                 />
