@@ -475,15 +475,6 @@ function formatDateTime(value: string) {
   });
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
 function sanitizeFileName(value: string) {
   return value.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -573,6 +564,8 @@ function normalizeQuestions(
 export default function QuestionBankPage() {
   const { authHeaders, user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const documentPagesRef = useRef<HTMLDivElement>(null);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [generatedFileRecords, setGeneratedFileRecords] = useState<QuestionFileRecord[]>([]);
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>([
@@ -1315,130 +1308,21 @@ export default function QuestionBankPage() {
     window.print();
   }
 
-  function downloadDocumentMode() {
-    if (filteredQuestions.length === 0) {
-      setError("Tiada soalan untuk dimuat turun.");
-      return;
+  async function downloadDocumentMode() {
+    const pages = documentPagesRef.current?.querySelectorAll<HTMLElement>("[data-document-page]");
+    if (!pages?.length) { setError("Tiada soalan dalam paparan untuk dimuat turun."); return; }
+    setIsDownloadingPdf(true);
+    setError("");
+    try {
+      const { downloadDocumentPdf } = await import("@/src/lib/document-pdf");
+      const title = getDocumentTitleParts(activeFileRecords).displayTitle;
+      await downloadDocumentPdf(Array.from(pages), `${exportAudience}-${sanitizeFileName(title) || "document-mode"}.pdf`);
+    } catch {
+      setError("PDF gagal disediakan. Cuba semula selepas halaman selesai dimuatkan.");
+    } finally {
+      setIsDownloadingPdf(false);
     }
-
-    const documentTitle = getDocumentTitleParts(activeFileRecords);
-    const questionPages = questions
-      .map((item, index) => {
-        const combinationItems =
-          item.objectiveFormat === "Soalan Aneka Gabungan" && item.combinationItems?.length
-            ? `<div class="combination-items">${item.combinationItems
-                .map((combinationItem) => {
-                  const parsed = splitRomanItem(combinationItem);
-                  return `<div class="option-row"><span>${escapeHtml(parsed.label)}.</span><span>${escapeHtml(parsed.text)}</span></div>`;
-                })
-                .join("")}</div>`
-            : "";
-        const options =
-          item.type === "Objektif" && item.options?.length
-            ? `<div class="options">${item.options
-                .map((option) => {
-                  const parsed = splitOption(option);
-                  const isCorrect = exportAudience === "panel" && parsed.label === item.correctAnswer;
-                  return `<div class="option-row ${isCorrect ? "correct" : ""}"><span>${escapeHtml(parsed.label)}.</span><span>${escapeHtml(parsed.text)}</span></div>`;
-                })
-                .join("")}</div>`
-            : `<div class="subjective-line"></div>`;
-
-        return `<section class="page">
-  <div class="table-header">
-    <div>JENIS<br>SOALAN</div>
-    <div>KETERAMPILAN</div>
-    <div>NO. &amp; TAJUK</div>
-    <div>NO. SUB<br>MODUL</div>
-    <div>ARAS<br>KESUKARAN</div>
-  </div>
-  <div class="table-body">
-    <div>${escapeHtml(getDocumentQuestionType(item))}</div>
-    <div>${escapeHtml(getDocumentSkillCategory(item.skillCategory))}</div>
-    <div>${escapeHtml(documentTitle.displayTitle)}</div>
-    <div>${escapeHtml(documentTitle.code)}</div>
-    <div>${escapeHtml(getDocumentDifficulty(item.difficulty))}</div>
-  </div>
-  <div class="question">
-    <div class="question-row"><span>${index + 1}.</span><p>${escapeHtml(item.question)}</p></div>
-    ${combinationItems}
-    ${options}
-    ${exportAudience === "panel" ? `<div class="scheme"><p>UNTUK SEMAKAN PANEL</p><p>Jawapan: ${escapeHtml(item.correctAnswer || "Subjektif")}</p>${toList(item.answerScheme).map(line => `<p>${escapeHtml(line)}</p>`).join("")}${(item.rubric || []).map(row => `<p>${escapeHtml(row.criteria)} (${row.marks} markah): ${escapeHtml(row.description || "")}</p>`).join("")}<p>${escapeHtml(item.sourceReference || "Rujukan perlu disemak oleh panel")}</p></div>` : ""}
-  </div>
-</section>`;
-      })
-      .join("");
-    const html = `<!doctype html>
-<html lang="ms">
-<head>
-  <meta charset="utf-8">
-  <title>${escapeHtml(documentTitle.displayTitle)}</title>
-  <style>
-    @page { size: A4; margin: 0; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: #e5e7eb; font-family: Arial, sans-serif; color: #000; }
-    .page {
-      width: 210mm;
-      min-height: 297mm;
-      margin: 16px auto;
-      padding: 19mm 17.5mm;
-      background: #fff;
-      page-break-after: always;
-      font-size: 16px;
-      font-weight: 700;
-      line-height: 1.35;
-    }
-    .table-header, .table-body {
-      display: grid;
-      grid-template-columns: 100px 118px 1fr 76px 106px;
-      text-align: center;
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1.1;
-    }
-    .table-header { background: #d9d9d9; border: 1px solid #000; text-transform: uppercase; }
-    .table-body { border-left: 1px solid #000; border-right: 1px solid #000; border-bottom: 1px solid #000; }
-    .table-header div, .table-body div {
-      min-height: 44px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 4px;
-      border-right: 1px solid #000;
-    }
-    .table-body div { min-height: 96px; align-items: flex-start; padding: 12px 8px; }
-    .table-header div:last-child, .table-body div:last-child { border-right: 0; }
-    .question { margin-top: 28px; }
-    .question-row { display: grid; grid-template-columns: 20px 1fr; gap: 12px; }
-    .question-row p { margin: 0; }
-    .combination-items { display: grid; gap: 12px; margin-top: 24px; padding-left: 40px; }
-    .options { display: grid; gap: 20px; margin-top: 28px; padding-left: 40px; }
-    .option-row { display: grid; grid-template-columns: 24px 1fr; gap: 12px; }
-    .combination-items .option-row { grid-template-columns: 32px 1fr; gap: 8px; }
-    .correct { color: #dc2626; }
-    .scheme { font-size: 12px; font-weight: normal; margin-top: 24px; border-top: 1px solid #999; }
-    .subjective-line { min-height: 96px; margin-top: 32px; border-bottom: 1px dotted #64748b; }
-    @media print {
-      body { background: #fff; }
-      .page { margin: 0; box-shadow: none; }
-    }
-  </style>
-</head>
-<body>
-${questionPages}
-</body>
-</html>`;
-    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `${exportAudience}-${sanitizeFileName(documentTitle.displayTitle) || "document-mode"}.html`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
   }
-
   async function submitFeedback() {
     setError("");
     setDraftMessage("");
@@ -1912,10 +1796,11 @@ ${questionPages}
                   <button
                     type="button"
                     onClick={downloadDocumentMode}
+                    disabled={isDownloadingPdf}
                     className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-100"
                   >
                     <Download className="h-4 w-4" />
-                    Muat turun semua soalan (HTML)
+                    {isDownloadingPdf ? "Menyediakan PDF..." : "Muat turun PDF"}
                   </button>
                 ) : null}
                 <div className="relative">
@@ -1948,13 +1833,14 @@ ${questionPages}
 
             {viewMode === "Document" && questions.length > 0 ? (
               <div className="overflow-auto rounded-2xl border border-slate-200 bg-slate-100 p-4">
-                <div className="mx-auto grid w-[794px] gap-6">
+                <div ref={documentPagesRef} className="mx-auto grid w-[794px] gap-6">
                   {filteredQuestions.map((item, index) => {
                     const documentTitle = getDocumentTitleParts(activeFileRecords);
 
                     return (
                       <section
                         key={item.id}
+                        data-document-page
                         className="min-h-[1123px] w-[794px] bg-white px-[66px] py-[72px] text-black shadow-sm"
                         style={{
                           fontFamily: "Arial, sans-serif",
