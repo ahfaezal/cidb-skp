@@ -5,9 +5,9 @@ import re
 import zipfile
 from io import BytesIO
 from typing import List, Optional
+from starlette.concurrency import run_in_threadpool
 from xml.etree import ElementTree
 
-import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -16,8 +16,9 @@ from app.db.database import SessionLocal
 from app.models.question_builder_draft import QuestionBuilderDraft
 from app.models.user import User
 from app.api.trade_cmcs_mappings import extract_response_text
-from app.services.auth_service import get_current_user
-from app.services.s3_storage import upload_question_file
+from app.services.auth_service import get_current_user, require_roles
+from app.services.s3_storage import upload_question_file, read_question_file
+from app.services.ai_service import ai_user, request_ai
 
 router = APIRouter(
     prefix="/question-builder",
@@ -39,10 +40,10 @@ REQUIRED_DIFFICULTY_LEVELS = {
 class QuestionBuilderSettings(BaseModel):
     files: List[dict] = Field(default_factory=list)
     questionTypes: List[str]
-    objectiveCount: int = 0
-    objectiveSingleCount: int = 0
-    objectiveCombinationCount: int = 0
-    subjectiveCount: int = 0
+    objectiveCount: int = Field(0, ge=0, le=30)
+    objectiveSingleCount: int = Field(0, ge=0, le=30)
+    objectiveCombinationCount: int = Field(0, ge=0, le=30)
+    subjectiveCount: int = Field(0, ge=0, le=30)
     skillCategories: List[str]
     difficultyLevels: List[str]
     language: str = "Bahasa Melayu"
@@ -62,6 +63,7 @@ class QuestionBuilderDraftCreate(BaseModel):
     files: List[dict] = Field(default_factory=list)
     questions: List[dict]
     analysis: dict = Field(default_factory=dict)
+    expectedUpdatedAt: Optional[str] = None
 
 
 class QuestionBuilderDraftResponse(BaseModel):
@@ -133,12 +135,18 @@ def extract_docx_text(file_bytes: bytes):
     return "\n".join(paragraphs).strip()
 
 
-async def build_file_content(files: List[UploadFile], owner_ref: str):
+async def build_file_content(files: List[UploadFile], owner_ref: str, saved_records=None):
     content = []
     file_records = []
 
+    if len(files) > 5:
+        raise HTTPException(422, "Maksimum 5 fail nota bagi setiap penjanaan.")
+    total_bytes = 0
     for upload in files:
-        file_bytes = await upload.read()
+        file_bytes = await upload.read(10 * 1024 * 1024 + 1)
+        total_bytes += len(file_bytes)
+        if not file_bytes or len(file_bytes) > 10 * 1024 * 1024 or total_bytes > 20 * 1024 * 1024:
+            raise HTTPException(413, "Fail mesti tidak kosong, maksimum 10 MB setiap fail dan 20 MB keseluruhan.")
         filename = upload.filename or "nota"
         extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
 
@@ -148,7 +156,7 @@ async def build_file_content(files: List[UploadFile], owner_ref: str):
                 detail="Hanya fail PDF, DOCX dan TXT disokong.",
             )
 
-        storage = upload_question_file(
+        storage = saved_records[len(file_records)].get("storage") if saved_records else await run_in_threadpool(upload_question_file,
             file_bytes=file_bytes,
             filename=filename,
             content_type=upload.content_type or "application/octet-stream",
@@ -199,6 +207,8 @@ async def build_file_content(files: List[UploadFile], owner_ref: str):
 
 
 def validate_settings(settings: QuestionBuilderSettings):
+    if not 1 <= settings.objectiveCount + settings.subjectiveCount <= 30:
+        raise HTTPException(422, "Pilih antara 1 hingga 30 soalan keseluruhan.")
     if not settings.questionTypes:
         raise HTTPException(status_code=422, detail="Pilih jenis soalan.")
 
@@ -344,11 +354,12 @@ Pulangkan JSON sah sahaja, tanpa Markdown, dalam format:
 
 
 def enforce_generation_settings(result: dict, settings: QuestionBuilderSettings):
+    if not isinstance(result, dict):
+        raise HTTPException(502, "Hasil AI tidak sah.")
     questions = result.get("questions")
 
     if not isinstance(questions, list):
-        result["questions"] = []
-        return result
+        raise HTTPException(502, "AI tidak memulangkan senarai soalan yang lengkap.")
 
     allowed_types = set(settings.questionTypes)
     allowed_skills = set(settings.skillCategories)
@@ -419,6 +430,22 @@ def enforce_generation_settings(result: dict, settings: QuestionBuilderSettings)
         filtered.append(question)
 
     result["questions"] = filtered
+    expected = settings.objectiveCount + settings.subjectiveCount
+    if len(filtered) != expected:
+        raise HTTPException(502, "Jumlah soalan AI tidak lengkap. Kurangkan jumlah dan cuba semula.")
+    for question in filtered:
+        try:
+            validate_question(question, settings.generateRubric)
+        except HTTPException as exc:
+            raise HTTPException(502, "Hasil AI tidak lengkap: " + str(exc.detail)) from exc
+        if not isinstance(question.get("sourceReference"), str) or not question["sourceReference"].strip():
+            raise HTTPException(502, "AI tidak memberikan rujukan nota. Cuba semula.")
+        if settings.generateAnswerScheme and (not isinstance(question.get("answerScheme"), list) or not question["answerScheme"]):
+            raise HTTPException(502, "AI tidak memberikan skema lengkap. Cuba semula.")
+        if not settings.generateAnswerScheme:
+            question["answerScheme"] = []
+        if not settings.generateRubric:
+            question["rubric"] = []
 
     if "analysis" not in result or not isinstance(result["analysis"], dict):
         result["analysis"] = {}
@@ -443,12 +470,53 @@ def enforce_generation_settings(result: dict, settings: QuestionBuilderSettings)
     return result
 
 
+def validate_question(question, require_rubric=False):
+    if not isinstance(question, dict) or not isinstance(question.get("question"), str) or not question["question"].strip():
+        raise HTTPException(422, "Teks soalan tidak boleh kosong.")
+    if question.get("type") not in {"Objektif", "Subjektif"} or question.get("skillCategory") not in REQUIRED_SKILL_CATEGORIES or question.get("difficulty") not in REQUIRED_DIFFICULTY_LEVELS:
+        raise HTTPException(422, "Jenis, keterampilan atau aras soalan tidak sah.")
+    if question["type"] == "Objektif":
+        options = question.get("options")
+        if not isinstance(options, list) or len(options) != 4 or any(not isinstance(x, str) or not x.strip() for x in options) or question.get("correctAnswer") not in {"A", "B", "C", "D"}:
+            raise HTTPException(422, "Soalan objektif mesti mempunyai 4 pilihan dan jawapan A–D.")
+        if question.get("objectiveFormat") == "Soalan Aneka Gabungan":
+            items = question.get("combinationItems")
+            if not isinstance(items, list) or len(items) != 4 or any(not isinstance(x, str) or not x.strip() for x in items):
+                raise HTTPException(422, "Soalan gabungan mesti mempunyai 4 pernyataan I–IV.")
+    elif require_rubric:
+        rubric = question.get("rubric")
+        if not isinstance(rubric, list) or not rubric or any(not isinstance(x, dict) or not x.get("criteria") or not isinstance(x.get("marks"), (int, float)) or x["marks"] <= 0 for x in rubric):
+            raise HTTPException(422, "Rubrik subjektif dan markah positif diperlukan.")
+
+
+def can_read_draft(draft, user):
+    return user.role == "Super Admin" or draft.owner_ref == str(user.id) or (draft.visibility == "Project" and draft.project_ref == user.project_ref)
+
+
+def validate_draft(data, user, existing=None):
+    if not 1 <= len(data.questions) <= 30 or data.visibility not in {"Private", "Project"} or data.status != "Draft":
+        raise HTTPException(422, "Draf mesti mengandungi 1–30 soalan, visibility sah dan status Draft.")
+    for question in data.questions:
+        validate_question(question)
+    # Existing file references can be retained by an administrator; new ones must
+    # belong to the authenticated author, never just a client-supplied user ID.
+    retained = {json.dumps(x, sort_keys=True) for x in json.loads(existing.files_json)} if existing else set()
+    from app.services.s3_storage import _bucket_name
+    for record in data.files:
+        storage = record.get("storage")
+        if storage and json.dumps(record, sort_keys=True) not in retained:
+            if not isinstance(storage, dict) or storage.get("bucket") != _bucket_name() or not isinstance(storage.get("key"), str) or not storage["key"].startswith(f"question-builder/{user.id}/"):
+                raise HTTPException(403, "Rujukan fail bukan milik pengguna ini.")
+
+
 @router.post("/generate")
 async def generate_questions(
     settings: str = Form(...),
     ownerRef: str = Form("local-user"),
     files: Optional[List[UploadFile]] = File(None),
-    current_user: User = Depends(get_current_user),
+    draftId: Optional[int] = Form(None),
+    current_user: User = Depends(ai_user),
+    db: Session = Depends(get_db),
 ):
     api_key = os.getenv("OPENAI_API_KEY")
 
@@ -466,6 +534,20 @@ async def generate_questions(
     parsed_settings = normalize_settings(parsed_settings)
     validate_settings(parsed_settings)
 
+    saved_records = None
+    if not files and draftId:
+        draft = db.query(QuestionBuilderDraft).filter(QuestionBuilderDraft.id == draftId).first()
+        if not draft or not (draft.owner_ref == str(current_user.id) or current_user.role == "Super Admin"):
+            raise HTTPException(403, "Akses nota asal tidak dibenarkan.")
+        saved_records = json.loads(draft.files_json)
+        if not 1 <= len(saved_records) <= 5:
+            raise HTTPException(422, "Nota asal tidak tersedia. Muat naik nota semula.")
+        try:
+            files = [UploadFile(filename=record["name"], file=BytesIO(await run_in_threadpool(read_question_file, record, draft.owner_ref))) for record in saved_records]
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(502, "Nota asal gagal dibaca. Cuba semula atau muat naik nota.") from exc
     if not files:
         raise HTTPException(
             status_code=422,
@@ -473,7 +555,7 @@ async def generate_questions(
         )
 
     try:
-        file_content, file_records = await build_file_content(files, str(current_user.id))
+        file_content, file_records = await build_file_content(files, str(current_user.id), saved_records)
     except HTTPException:
         raise
     except Exception as exc:
@@ -497,23 +579,9 @@ async def generate_questions(
         "text": {"format": {"type": "json_object"}},
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=120) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/responses",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=exc.response.text) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="AI generation request failed.") from exc
+    response_data = await request_ai(payload, current_user.id)
 
-    output_text = clean_json_text(extract_response_text(response.json()))
+    output_text = clean_json_text(extract_response_text(response_data))
 
     try:
         result = json.loads(output_text)
@@ -547,6 +615,14 @@ def draft_to_response(draft: QuestionBuilderDraft):
     )
 
 
+@router.get("/backup")
+def backup_question_builder(
+    _: User = Depends(require_roles("Super Admin")), db: Session = Depends(get_db),
+):
+    from datetime import datetime, timezone
+    return {"format": "skp-question-drafts-v1", "exportedAt": datetime.now(timezone.utc).isoformat(), "drafts": [draft_to_response(draft) for draft in db.query(QuestionBuilderDraft).order_by(QuestionBuilderDraft.id).all()]}
+
+
 @router.get("/drafts", response_model=List[QuestionBuilderDraftResponse])
 def get_question_builder_drafts(
     ownerRef: str = "local-user",
@@ -561,7 +637,8 @@ def get_question_builder_drafts(
     if scope == "all" and current_user.role == "Super Admin":
         pass
     elif scope == "project":
-        query = query.filter(QuestionBuilderDraft.project_ref == current_user.project_ref)
+        from sqlalchemy import or_, and_
+        query = query.filter(or_(QuestionBuilderDraft.owner_ref == str(current_user.id), and_(QuestionBuilderDraft.project_ref == current_user.project_ref, QuestionBuilderDraft.visibility == "Project")))
     else:
         query = query.filter(QuestionBuilderDraft.owner_ref == str(current_user.id))
 
@@ -588,11 +665,7 @@ def get_question_builder_draft(
     if not draft:
         raise HTTPException(status_code=404, detail="Draf soalan tidak ditemui.")
 
-    can_view = (
-        current_user.role == "Super Admin"
-        or draft.owner_ref == str(current_user.id)
-        or draft.project_ref == current_user.project_ref
-    )
+    can_view = can_read_draft(draft, current_user)
     if not can_view:
         raise HTTPException(status_code=403, detail="Akses draf tidak dibenarkan.")
 
@@ -605,6 +678,7 @@ def save_question_builder_draft(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    validate_draft(data, current_user)
     if not data.questions:
         raise HTTPException(status_code=422, detail="Tiada soalan untuk disimpan.")
 
@@ -630,6 +704,7 @@ def save_question_builder_draft(
         "id": draft.id,
         "title": draft.title,
         "status": draft.status,
+        "updatedAt": draft.updated_at.isoformat(),
         "message": "Draf soalan berjaya disimpan.",
     }
 
@@ -647,6 +722,7 @@ def update_question_builder_draft(
     draft = (
         db.query(QuestionBuilderDraft)
         .filter(QuestionBuilderDraft.id == draft_id)
+        .with_for_update()
         .first()
     )
 
@@ -657,6 +733,16 @@ def update_question_builder_draft(
     if not can_update:
         raise HTTPException(status_code=403, detail="Akses kemaskini draf tidak dibenarkan.")
 
+    validate_draft(data, current_user, draft)
+    if not data.expectedUpdatedAt or data.expectedUpdatedAt != draft.updated_at.isoformat():
+        raise HTTPException(409, "Draf telah berubah atau versinya tiada. Muat semula draf sebelum menyimpan; salin perubahan anda dahulu.")
+
+    incoming = {question.get("id"): question for question in data.questions}
+    for previous in json.loads(draft.questions_json):
+        following = incoming.get(previous.get("id"))
+        if previous.get("locked") and (following is None or (following.get("locked") and previous != following)):
+            raise HTTPException(422, "Buka lock soalan sebelum mengubah atau membuangnya.")
+
     draft.title = data.title.strip() or draft.title or "Draf Soalan"
     draft.visibility = data.visibility.strip() or draft.visibility or "Private"
     draft.status = data.status
@@ -664,6 +750,9 @@ def update_question_builder_draft(
     draft.files_json = json.dumps(data.files, ensure_ascii=False)
     draft.questions_json = json.dumps(data.questions, ensure_ascii=False)
     draft.analysis_json = json.dumps(data.analysis, ensure_ascii=False)
+    # Python microseconds avoid equal versions for saves within the same second.
+    from datetime import datetime, timezone
+    draft.updated_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(draft)
@@ -673,4 +762,5 @@ def update_question_builder_draft(
         "title": draft.title,
         "status": draft.status,
         "message": "Draf soalan berjaya dikemaskini.",
+        "updatedAt": draft.updated_at.isoformat(),
     }

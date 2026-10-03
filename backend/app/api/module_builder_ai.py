@@ -1,8 +1,9 @@
+from app.services.ai_service import ai_user, request_ai
+from app.models.user import User
 import os
 from typing import Optional
 
-import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.api.trade_cmcs_mappings import extract_response_text
@@ -145,7 +146,7 @@ def clean_ai_content(content: str):
 
 
 @router.post("/generate", response_model=ModuleBuilderAIResponse)
-async def generate_module_builder_content(data: ModuleBuilderAIRequest):
+async def generate_module_builder_content(data: ModuleBuilderAIRequest, current_user: User = Depends(ai_user)):
     api_key = os.getenv("OPENAI_API_KEY")
 
     if not api_key:
@@ -159,23 +160,9 @@ async def generate_module_builder_content(data: ModuleBuilderAIRequest):
         "input": build_prompt(data),
     }
 
-    try:
-        async with httpx.AsyncClient(timeout=90) as client:
-            response = await client.post(
-                "https://api.openai.com/v1/responses",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            )
-            response.raise_for_status()
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=exc.response.text) from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail="AI generation request failed.") from exc
+    response_data = await request_ai(payload, current_user.id)
 
-    content = clean_ai_content(extract_response_text(response.json()))
+    content = clean_ai_content(extract_response_text(response_data))
 
     if not content:
         raise HTTPException(status_code=502, detail="AI returned empty content.")

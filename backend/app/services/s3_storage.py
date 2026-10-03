@@ -17,6 +17,25 @@ def is_s3_configured():
     )
 
 
+def read_question_file(record, owner_ref):
+    """Read only a saved author's object, with bounded memory and no public URL."""
+    from fastapi import HTTPException
+    from botocore.config import Config
+    import boto3
+
+    storage = record.get("storage")
+    if not isinstance(storage, dict) or storage.get("bucket") != _bucket_name() or not isinstance(storage.get("key"), str) or not storage["key"].startswith(f"question-builder/{owner_ref}/"):
+        raise HTTPException(422, "Rujukan nota tidak sah. Muat naik nota semula.")
+    client = boto3.client("s3", region_name=os.getenv("AWS_REGION"), config=Config(connect_timeout=10, read_timeout=30, retries={"max_attempts": 1}))
+    result = client.get_object(Bucket=_bucket_name(), Key=storage["key"])
+    try:
+        if result["ContentLength"] > 10 * 1024 * 1024:
+            raise HTTPException(413, "Nota tersimpan melebihi 10 MB.")
+        return result["Body"].read(10 * 1024 * 1024 + 1)
+    finally:
+        result["Body"].close()
+
+
 def _safe_filename(filename: str):
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", filename.strip())
     return cleaned.strip("-") or "upload"

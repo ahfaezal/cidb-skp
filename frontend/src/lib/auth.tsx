@@ -1,9 +1,9 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
-import { API_BASE_URL } from "@/src/lib/api";
+import { API_BASE_URL, apiFetch } from "@/src/lib/api";
 
 export type UserRole =
   | "Super Admin"
@@ -38,17 +38,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(() => {
     if (typeof window === "undefined") return null;
     const savedUser = window.localStorage.getItem("skpAuthUser");
-    return savedUser ? (JSON.parse(savedUser) as AuthUser) : null;
+    try { return savedUser ? (JSON.parse(savedUser) as AuthUser) : null; } catch { return null; }
   });
   const [token, setToken] = useState(() => {
     if (typeof window === "undefined") return "";
     return window.localStorage.getItem("skpAuthToken") || "";
   });
-  const isReady = true;
+  const [isReady, setIsReady] = useState(false);
+  const [sessionError, setSessionError] = useState("");
+  const logout = useCallback(() => {
+    window.localStorage.removeItem("skpAuthToken");
+    window.localStorage.removeItem("skpAuthUser");
+    setToken(""); setUser(null); setIsReady(true);
+    router.push("/login");
+  }, [router]);
+  const authHeaders = useCallback((): Record<string, string> => token ? { Authorization: `Bearer ${token}` } : {}, [token]);
+  useEffect(() => {
+    const controller = new AbortController();
+    window.addEventListener("skp-session-expired", logout);
+    const timer = window.setTimeout(async () => {
+      if (!token) { setIsReady(true); return; }
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/auth/me`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(180000)]) });
+        if (!response.ok) throw new Error("Sesi tidak dapat disahkan. Muat semula untuk mencuba lagi.");
+        const verified = await response.json() as AuthUser;
+        if (!controller.signal.aborted) {
+          setUser(verified); window.localStorage.setItem("skpAuthUser", JSON.stringify(verified)); setIsReady(true);
+        }
+      } catch (err) {
+        if (!controller.signal.aborted) setSessionError(err instanceof Error ? err.message : "Sesi gagal disahkan.");
+      }
+    }, 0);
+    return () => { window.clearTimeout(timer); controller.abort(); window.removeEventListener("skp-session-expired", logout); };
+  }, [logout, token]);
 
   const value = useMemo<AuthContextValue>(() => {
     async function login(email: string, password: string) {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      const response = await apiFetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -68,28 +94,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.localStorage.setItem("skpAuthUser", JSON.stringify(payload.user));
       setToken(payload.accessToken);
       setUser(payload.user);
-      router.push("/dashboard");
-    }
-
-    function logout() {
-      window.localStorage.removeItem("skpAuthToken");
-      window.localStorage.removeItem("skpAuthUser");
-      setToken("");
-      setUser(null);
-      router.push("/login");
-    }
-
-    function authHeaders() {
-      const headers: Record<string, string> = {};
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-      return headers;
+      setIsReady(true);
+      router.push(payload.user.role === "Ahli Panel Pembangun" ? "/question-bank" : "/dashboard");
     }
 
     return { user, token, isReady, login, logout, authHeaders };
-  }, [isReady, router, token, user]);
+  }, [authHeaders, isReady, logout, router, token, user]);
 
+  if (sessionError && !isReady) return <div className="p-8"><p>{sessionError}</p><button onClick={() => window.location.reload()}>Cuba semula</button><button onClick={logout}>Log masuk semula</button></div>;
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
