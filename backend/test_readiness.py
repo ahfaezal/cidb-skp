@@ -113,6 +113,18 @@ class ReadinessTest(unittest.TestCase):
         finally:
             os.environ['AUTH_SECRET_KEY'] = old_secret
 
+    def test_combination_truths_match_answer(self):
+        from fastapi import HTTPException
+        settings = qb.QuestionBuilderSettings(questionTypes=['Objektif'], objectiveCount=1, objectiveCombinationCount=1, skillCategories=['Prosedur'], difficultyLevels=['Aras Rendah'])
+        question = {**self.question, 'objectiveFormat': 'Soalan Aneka Gabungan', 'combinationItems': ['I. One', 'II. Two', 'III. Three', 'IV. Wrong'], 'combinationTruthValues': [True, True, True, True], 'combinationExplanations': ['Supported', 'Supported', 'Supported', 'Contradicted']}
+        with self.assertRaises(HTTPException):
+            qb.enforce_generation_settings({'questions': [copy.deepcopy(question)]}, settings)
+        question['combinationTruthValues'] = [True, True, True, False]
+        with self.assertRaises(HTTPException):
+            qb.enforce_generation_settings({'questions': [copy.deepcopy(question)]}, settings)
+        question['correctAnswer'] = 'A'
+        self.assertEqual(qb.enforce_generation_settings({'questions': [question]}, settings)['questions'][0]['correctAnswer'], 'A')
+
 
 if __name__ == '__main__':
     unittest.main()

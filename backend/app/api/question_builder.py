@@ -266,6 +266,7 @@ def build_prompt(settings: QuestionBuilderSettings):
 
     return f"""
 Anda ialah pembina soalan AI untuk platform SKP-CIDB.
+Untuk setiap Soalan Aneka Gabungan, tepat TIGA pernyataan mesti benar dan SATU mesti salah berdasarkan nota. Jangan bina empat pernyataan benar. Nyatakan combinationTruthValues sebagai empat boolean mengikut urutan I–IV, dan combinationExplanations sebagai empat penjelasan berdasarkan nota (jelaskan percanggahan bagi pernyataan salah). correctAnswer mesti sepadan tepat: A=[true,true,true,false], B=[true,true,false,true], C=[true,false,true,true], D=[false,true,true,true]. Skema dan rationale mesti menerangkan pernyataan salah. Semak konsistensi ini sebelum memulangkan JSON.
 {language_instruction}
 Gunakan kandungan fail nota yang dilampirkan sebagai sumber utama. Jangan jana soalan template atau soalan umum yang tidak berpaut kepada nota.
 Jangan sebut nama fail, nombor fail, "Nota PL", atau rujukan kepada fail upload dalam teks soalan, pilihan jawapan, skema, rasional, rubrik atau topik analisis.
@@ -438,6 +439,15 @@ def enforce_generation_settings(result: dict, settings: QuestionBuilderSettings)
             validate_question(question, settings.generateRubric)
         except HTTPException as exc:
             raise HTTPException(502, "Hasil AI tidak lengkap: " + str(exc.detail)) from exc
+        if question.get("objectiveFormat") == "Soalan Aneka Gabungan":
+            truths = question.get("combinationTruthValues")
+            explanations = question.get("combinationExplanations")
+            combinations = {"A": [True, True, True, False], "B": [True, True, False, True], "C": [True, False, True, True], "D": [False, True, True, True]}
+            if not isinstance(truths, list) or len(truths) != 4 or any(type(value) is not bool for value in truths) or truths != combinations.get(question.get("correctAnswer")):
+                raise HTTPException(502, "Skema gabungan AI tidak konsisten. Cuba jana semula; pernyataan mesti mempunyai tepat tiga benar dan satu salah.")
+            if not isinstance(explanations, list) or len(explanations) != 4 or any(not isinstance(value, str) or not value.strip() for value in explanations):
+                raise HTTPException(502, "AI tidak menjelaskan kesahihan setiap pernyataan gabungan. Cuba semula.")
+            question["rationale"] = " ".join(f"{label}: {reason}" for label, reason in zip(["I", "II", "III", "IV"], explanations))
         if not isinstance(question.get("sourceReference"), str) or not question["sourceReference"].strip():
             raise HTTPException(502, "AI tidak memberikan rujukan nota. Cuba semula.")
         if settings.generateAnswerScheme and (not isinstance(question.get("answerScheme"), list) or not question["answerScheme"]):
