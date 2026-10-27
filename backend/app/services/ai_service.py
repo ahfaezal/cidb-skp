@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import os
+import re
 import time
 from collections import defaultdict, deque
 from threading import Lock
@@ -41,6 +42,46 @@ def ai_user(user=Depends(get_current_user)):
     return user
 
 
+QUOTA_CODES = {"insufficient_quota", "credit_balance_exhausted", "billing_hard_limit_reached", "usage_limit_reached", "spend_limit_reached"}
+
+
+def provider_error(response):
+    try:
+        error = response.json().get("error", {})
+    except (ValueError, AttributeError):
+        error = {}
+    return error if isinstance(error, dict) else {}
+
+
+def safe_diagnostic(value):
+    # Never log credentials or full request/document bodies.
+    text = str(value or "")
+    key = os.getenv("OPENAI_API_KEY")
+    if key:
+        text = text.replace(key, "[redacted]")
+    text = re.sub(r"sk-[A-Za-z0-9_-]+", "[redacted]", text)
+    return text.replace("\n", " ").replace("\r", " ")[:700]
+
+
+def provider_failure(response):
+    error = provider_error(response)
+    code, kind = error.get("code"), error.get("type")
+    _log.warning(
+        "AI provider failure status=%s code=%s type=%s model_request_id=%s reason=%s retry_after=%s remaining_tokens=%s remaining_requests=%s",
+        response.status_code, safe_diagnostic(code), safe_diagnostic(kind),
+        response.headers.get("x-request-id"), safe_diagnostic(error.get("message")),
+        response.headers.get("retry-after"), response.headers.get("x-ratelimit-remaining-tokens"),
+        response.headers.get("x-ratelimit-remaining-requests"),
+    )
+    if code in QUOTA_CODES or kind == "insufficient_quota":
+        return HTTPException(503, "Kredit atau had belanja projek API pada server tidak mencukupi. Pentadbir perlu semak akaun dan projek API yang digunakan server.")
+    if response.status_code == 429:
+        return HTTPException(429, "Had permintaan atau token AI sementara dicapai. Tunggu sebentar dan cuba dengan jumlah soalan atau fail nota yang lebih kecil.", headers={"Retry-After": response.headers.get("retry-after", "60")})
+    if response.status_code in (401, 403):
+        return HTTPException(503, "Akses API AI pada server gagal. Pentadbir perlu semak kunci API dan kebenaran projek.")
+    return HTTPException(502, "Permintaan AI gagal. Hubungi pentadbir atau cuba semula.")
+
+
 async def request_ai(payload, user_id, timeout=120):
     key = os.getenv("OPENAI_API_KEY")
     if not key:
@@ -54,13 +95,19 @@ async def request_ai(payload, user_id, timeout=120):
         async with httpx.AsyncClient(timeout=timeout) as client:
             for attempt in range(2):
                 response = await client.post("https://api.openai.com/v1/responses", headers={"Authorization": f"Bearer {key}"}, json=payload)
-                if response.status_code in (429, 502, 503) and attempt == 0:
-                    await asyncio.sleep(2)
-                    continue
+                error = provider_error(response) if response.status_code >= 400 else {}
+                quota = error.get("code") in QUOTA_CODES or error.get("type") == "insufficient_quota"
+                if response.status_code in (429, 502, 503) and not quota and attempt == 0:
+                    try:
+                        delay = float(response.headers.get("retry-after", "5"))
+                    except ValueError:
+                        delay = 5
+                    # Long waits and oversized requests need user action, not repeated calls.
+                    if 0 <= delay <= 15 and "too large" not in str(error.get("message", "")).lower():
+                        await asyncio.sleep(max(2, delay))
+                        continue
                 if response.status_code >= 400:
-                    _log.warning("AI provider failure status=%s request_id=%s", response.status_code, response.headers.get("x-request-id"))
-                    message = "Kuota atau had AI telah dicapai. Hubungi pentadbir." if response.status_code == 429 else "Permintaan AI gagal. Hubungi pentadbir atau cuba semula."
-                    raise HTTPException(502, message)
+                    raise provider_failure(response)
                 data = response.json()
                 if data.get("status") in ("incomplete", "failed", "cancelled"):
                     raise HTTPException(502, "Hasil AI tidak lengkap. Kurangkan jumlah soalan dan cuba semula.")
